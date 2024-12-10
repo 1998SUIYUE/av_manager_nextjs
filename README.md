@@ -1,4 +1,4 @@
-![示例图片](public/example.png)
+![示例图片](public/exmple.png)
 # 项目名称
 这是一个用于管理电影的 Next.js 应用程序，旨在提供一个用户友好的界面来浏览、搜索和管理电影信息。
 
@@ -25,4 +25,3 @@
    ```
 
 5. 打开浏览器访问 [http://localhost:3000](http://localhost:3000) 查看应用。
-
