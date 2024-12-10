@@ -25,3 +25,8 @@
    ```
 
 5. 打开浏览器访问 [http://localhost:3000](http://localhost:3000) 查看应用。
+
+## 注意事项
+第一次打开时会获取电影数据，请耐心等待。
+在网页播放的时候,点击视频左上角的文件名会删除本地文件,这是为了快速删除不喜欢的文件.如果影响你的使用，可以在文件中删除这个功能。
+在my-nextjs-app\src\components\VideoPlayer.tsx搜索onClick={openInExplorer}并注释掉即可
