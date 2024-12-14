@@ -6,7 +6,7 @@ import {
   getCachedMovieMetadata,
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile, readFile } from "fs/promises";
 
 // 支持的视频文件扩展名
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
@@ -234,10 +234,10 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
 
   movieFiles.forEach((movie) => {
     if (movie.code) {
-      if (seenPaths.has(movie.code)) {
+      if (seenPaths.has(movie.code.toLocaleLowerCase())) {
         duplicateMovies.push(movie);
       } else {
-        seenPaths.add(movie.code);
+        seenPaths.add(movie.code.toLocaleLowerCase());
       }
     }
   });
@@ -249,8 +249,8 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
       console.log(`重复文件: 
   - 文件名: ${movie.filename}
   - 路径: ${movie.path}
-  - 大小: ${movie.sizeInGB}GB
-  - 扩展名: ${movie.extension}`);
+  - 大小: ${movie.sizeInGB}GB;
+`);
     });
     console.log(`总共检测到 ${duplicateMovies.length} 个重复文件`);
   } else {
@@ -341,7 +341,7 @@ async function retryWithTimeout<T>(
  */
 async function scanMovieDirectory(directoryPath: string) {
   // 处理路径中的引号和反斜杠
-  const cleanPath = directoryPath.replace(/['"]/g, '').replace(/\\/g, '/');
+  const cleanPath = directoryPath.replace(/['"]/g, "").replace(/\\/g, "/");
   console.log("清理后的路径:", cleanPath);
   const movieFiles: MovieFile[] = [];
 
@@ -412,32 +412,32 @@ async function scanMovieDirectory(directoryPath: string) {
   return processMovieFiles(movieFiles);
 }
 
-const STORAGE_PATH = path.join(process.cwd(), 'movie-directory.txt');
+const STORAGE_PATH = path.join(process.cwd(), "movie-directory.txt");
 
 async function getStoredDirectory(): Promise<string> {
   try {
-    const data = await readFile(STORAGE_PATH, 'utf-8');
+    const data = await readFile(STORAGE_PATH, "utf-8");
     return data.trim();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
-    return '';
+    return "";
   }
 }
 
 async function storeDirectory(directory: string): Promise<void> {
-  await writeFile(STORAGE_PATH, directory, 'utf-8');
+  await writeFile(STORAGE_PATH, directory, "utf-8");
 }
 
 export async function GET() {
   try {
     const movieDirectory = await getStoredDirectory();
-    console.log("get接收到的原始路径:", movieDirectory);
+    //console.log("get接收到的原始路径:", movieDirectory);
     if (!movieDirectory) {
       return NextResponse.json({ error: "No directory set" }, { status: 400 });
     }
     // 清理路径
-    const cleanPath = movieDirectory.replace(/['"]/g, '').replace(/\\/g, '/');
-    console.log("get处理后的路径:", cleanPath);
+    const cleanPath = movieDirectory.replace(/['"]/g, "").replace(/\\/g, "/");
+    //console.log("get处理后的路径:", cleanPath);
     const movies = await scanMovieDirectory(cleanPath);
     // console.log("扫描到的电影数据:", movies);
     return NextResponse.json(await Promise.all(movies));
@@ -449,18 +449,36 @@ export async function GET() {
     );
   }
 }
+export async function PUT() {
+  try {
+    const directory = await getStoredDirectory();
+    if (directory !== "") {
+      return NextResponse.json(
+        { error: "Directory already set" },
+        { status: 200 }
+      );
+    }
+    return NextResponse.json({ message: "Directory jaged" }, { status: 500 });
+  } catch (error) {
+    console.error("PUTError scanning movies:", error);
+    return NextResponse.json(
+      { error: "PUTFailed to scan movies" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(request: Request) {
   try {
     const { folderPath } = await request.json();
     console.log("POST接收到的原始路径:", folderPath);
     // 清理路径
-    const cleanPath = folderPath.replace(/['"]/g, '').replace(/\\/g, '/');
+    const cleanPath = folderPath.replace(/['"]/g, "").replace(/\\/g, "/");
     console.log("POST处理后的路径:", cleanPath);
-    
+
     // 存储路径
     await storeDirectory(cleanPath);
-    
+
     return NextResponse.json({ message: "扫描请求已接收", path: cleanPath });
   } catch (error) {
     console.error("POSTError scanning movies:", error);
@@ -473,10 +491,13 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    await writeFile('movie-directory.txt', '');
-    return NextResponse.json({ message: 'Movie directory cleared' });
+    await writeFile("movie-directory.txt", "");
+    return NextResponse.json({ message: "Movie directory cleared" });
   } catch (error) {
-    console.error('Error clearing movie directory:', error);
-    return NextResponse.json({ error: 'Failed to clear movie directory' }, { status: 500 });
+    console.error("Error clearing movie directory:", error);
+    return NextResponse.json(
+      { error: "Failed to clear movie directory" },
+      { status: 500 }
+    );
   }
 }

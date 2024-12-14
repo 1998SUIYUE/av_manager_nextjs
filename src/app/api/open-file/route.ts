@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       filePath 
     });
   } catch (error) {
-    console.error('删除文件时发生错误:', error);
+    console.log('删除文件时发生错误:', error);
     return NextResponse.json({ 
       error: '无法删除文件' 
     }, { status: 500 });

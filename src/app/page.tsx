@@ -1,7 +1,7 @@
-"use client"
-import FolderSelector from './FolderSelector';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+"use client";
+import FolderSelector from "./FolderSelector";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const router = useRouter();
@@ -9,15 +9,13 @@ export default function Home() {
   useEffect(() => {
     async function checkDirectory() {
       try {
-        const response = await fetch('/api/movies');
+        const response = await fetch("/api/movies", { method: "PUT" });
+        console.log("put response:", response);
         if (response.ok) {
-          const data = await response.json();
-          if (data && !data.error) {
-            router.push('/movies');
-          }
+          router.push("/movies");
         }
       } catch (error) {
-        console.error('Error checking movie directory:', error);
+        console.error("Error checking movie directory:", error);
       }
     }
     checkDirectory();

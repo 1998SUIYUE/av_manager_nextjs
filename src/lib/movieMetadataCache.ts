@@ -80,6 +80,6 @@ export async function updateMovieMetadataCache(
     
     await writeCache(cache);
   } catch (error) {
-    console.error('Error updating movie metadata cache:', error);
+    console.log('Error updating movie metadata cache:', error);
   }
 }

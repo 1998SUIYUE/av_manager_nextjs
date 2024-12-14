@@ -22,8 +22,8 @@ export function scanMovieDirectory(directoryPath: string): MovieFile[] {
   function scanDirectory(currentPath: string) {
     const files = fs.readdirSync(currentPath);
 
-    console.log(`扫描目录: ${currentPath}`);
-    console.log(`总文件数: ${files.length}`);
+    //console.log(`扫描目录: ${currentPath}`);
+    //console.log(`总文件数: ${files.length}`);
 
     files.forEach(file => {
       const fullPath = path.join(currentPath, file);
@@ -61,7 +61,7 @@ export function scanMovieDirectory(directoryPath: string): MovieFile[] {
 
   scanDirectory(directoryPath);
 
-  console.log(`总电影文件数: ${movieFiles.length}`);
+  //console.log(`总电影文件数: ${movieFiles.length}`);
 
   return movieFiles;
 }
