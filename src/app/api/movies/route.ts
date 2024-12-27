@@ -38,7 +38,7 @@ function parseMovieFilename(filename: string): {
   const nameWithoutExt = path.basename(filename, path.extname(filename));
 
   // 正则匹配 3-4个字母 + 连字符 + 3-4个数字
-  const matchResult = nameWithoutExt.match(/([a-zA-Z]{3,5}-\d{3,5})/);
+  const matchResult = nameWithoutExt.match(/([a-zA-Z]{2,5}-\d{2,5})/);
 
   const parsedTitle = matchResult ? matchResult[1] : nameWithoutExt;
 
@@ -376,7 +376,6 @@ async function scanMovieDirectory(directoryPath: string) {
               stats.size >= FILE_SIZE_THRESHOLD
             ) {
               const parsedInfo = parseMovieFilename(file);
-
               const movieFile: MovieFile = {
                 filename: file,
                 path: fullPath,

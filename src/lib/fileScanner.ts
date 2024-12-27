@@ -76,7 +76,7 @@ export function parseMovieFilename(filename: string): {
   const nameWithoutExt = path.basename(filename, path.extname(filename));
   
   // 正则匹配番号 如 ABC-123, CARIB-123, Tokyo-Hot-n1234
-  const codeRegex = /([A-Z]+-\d+|[A-Z]+-[A-Z]+-\d+)/i;
+  const codeRegex = /([A-Za-z]{2,}-\d+|[A-Z]+-[A-Z]+-\d+)/i;
   const codeMatch = nameWithoutExt.match(codeRegex);
   
   const code = codeMatch ? codeMatch[1].toUpperCase() : undefined;

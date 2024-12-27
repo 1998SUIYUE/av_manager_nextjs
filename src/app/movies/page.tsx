@@ -58,15 +58,28 @@ export default function MoviesPage() {
   }, []);
 
   // 获取所有女优名字
+  // const actresses = useMemo(() => {
+  //   const actressSet = new Set(
+  //     movies
+  //       .map((movie) => movie.actress)
+  //       .filter((actress) => actress !== undefined)
+  //   );
+  //   return Array.from(actressSet).sort();
+  // }, [movies]);
   const actresses = useMemo(() => {
-    const actressSet = new Set(
-      movies
-        .map((movie) => movie.actress)
-        .filter((actress) => actress !== undefined)
-    );
-    return Array.from(actressSet).sort();
-  }, [movies]);
+    const actressCount: Record<string, number> = {};
 
+    movies.forEach((movie) => {
+      if (movie.actress) {
+        actressCount[movie.actress] = (actressCount[movie.actress] || 0) + 1;
+      }
+    });
+
+    // 将女优和出现次数转换为数组并排序
+    return Object.entries(actressCount)
+      .map(([actress, count]) => ({ actress, count }))
+      .sort((a, b) => a.actress.localeCompare(b.actress));
+  }, [movies]);
   // 过滤电影列表
   const filteredMovies = useMemo(() => {
     let result = movies;
@@ -190,18 +203,24 @@ export default function MoviesPage() {
       </button>
     </div>
   );
-
+  const handleRandomMovieClick = () => {
+    if (movies.length > 0) {
+      const randomIndex = Math.floor(Math.random() * movies.length);
+      const randomMovie = movies[randomIndex];
+      handleMovieClick(randomMovie);
+    }
+  };
   const handleClearDirectory = async () => {
     try {
-      const response = await fetch('/api/movies', {
-        method: 'DELETE',
+      const response = await fetch("/api/movies", {
+        method: "DELETE",
       });
       if (!response.ok) {
-        throw new Error('Failed to clear movie directory');
+        throw new Error("Failed to clear movie directory");
       }
       window.location.href = "/";
     } catch (error) {
-      console.error('Error clearing movie directory:', error);
+      console.error("Error clearing movie directory:", error);
     }
   };
 
@@ -256,7 +275,12 @@ export default function MoviesPage() {
         >
           更改电影目录
         </button>
-
+        <button
+          onClick={handleRandomMovieClick}
+          className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors mx-4"
+        >
+          随机选择电影
+        </button>
         <div className="flex items-center space-x-2">
           <SortModeToggle />
           {sortMode === "time" ? <TimeOrderToggle /> : <SizeOrderToggle />}
@@ -276,23 +300,23 @@ export default function MoviesPage() {
         >
           全部
         </button>
-        {actresses.map((actress) => (
+        {actresses.map((Record) => (
           <button
-            key={actress}
-            onClick={() => setSelectedActress(actress)}
+            key={Record.actress} // 修改为使用 Record.actress 作为 key
+            onClick={() => setSelectedActress(Record.actress)} // 修改为使用 Record.actress
             className={`px-3 py-1 rounded-md ${
-              selectedActress === actress
+              selectedActress === Record.actress
                 ? "bg-blue-500 text-white"
                 : "bg-gray-200 text-black"
             }`}
           >
-            {actress}
+            {Record.actress}({Record.count})
           </button>
         ))}
       </div>
 
       {/* 电影列表网格布局 */}
-      <div className="grid grid-cols-4 gap-4 ">
+      <div className="grid grid-cols-4 gap-4" id="movie_list">
         {sortedMovies.map((movie) => (
           <div
             key={movie.filename}
