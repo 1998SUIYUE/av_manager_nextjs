@@ -130,7 +130,7 @@ async function fetchCoverUrl(code: string) {
 
       // 获取女优名字
       const actressSelectors = ["span:contains(女优:)"];
-      let actress = null;
+      let actress = "unknow";
       for (const selector of actressSelectors) {
         // console.log(`[fetchCoverUrl] 尝试女优选择器: ${selector}`);
         actress = await page.evaluate(() => {
@@ -138,10 +138,10 @@ async function fetchCoverUrl(code: string) {
             document.querySelectorAll("span")
           ).find((span) => span.textContent?.includes("女优:"));
           return actressSpan
-            ? actressSpan.nextElementSibling?.textContent?.trim() || null
-            : null;
+            ? actressSpan.nextElementSibling?.textContent?.trim() || "unknow"
+            : "unknow";
         });
-        if (actress && actress !== "null") {
+        if (actress && actress !== "unknow") {
           console.log(
             `[fetchCoverUrl] 使用选择器 ${selector} 找到女优: ${actress}`
           );

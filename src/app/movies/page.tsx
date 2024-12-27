@@ -72,13 +72,15 @@ export default function MoviesPage() {
     movies.forEach((movie) => {
       if (movie.actress) {
         actressCount[movie.actress] = (actressCount[movie.actress] || 0) + 1;
+      } else {
+        actressCount["unkown"] = (actressCount["unkown"] || 0) + 1;
       }
     });
 
     // 将女优和出现次数转换为数组并排序
     return Object.entries(actressCount)
       .map(([actress, count]) => ({ actress, count }))
-      .sort((a, b) => a.actress.localeCompare(b.actress));
+      .sort((a, b) => b.count - a.count);
   }, [movies]);
   // 过滤电影列表
   const filteredMovies = useMemo(() => {
@@ -95,7 +97,7 @@ export default function MoviesPage() {
     }
 
     if (selectedActress) {
-      result = result.filter((movie) => movie.actress === selectedActress);
+      result = result.filter((movie) =>movie.actress === selectedActress)
     }
 
     return result;
