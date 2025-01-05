@@ -155,9 +155,11 @@ async function fetchCoverUrl(code: string) {
       console.log(
         `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
       );
-
+      if(!coverUrl){
+        await updateMovieMetadataCache(code, coverUrl, title, actress);
+      }
       // 更新缓存
-      await updateMovieMetadataCache(code, coverUrl, title, actress);
+      
 
       return {
         coverUrl,
