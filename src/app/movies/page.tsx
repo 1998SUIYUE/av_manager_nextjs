@@ -43,7 +43,7 @@ export default function MoviesPage() {
           throw new Error(`Failed to fetch movies: ${response.statusText}`);
         }
         const data = await response.json();
-        // console.log("接收到的电影数据:", data);
+        console.log("接收到的电影数据:", data);
         setMovies(data);
         setIsLoading(false);
       } catch (err) {
@@ -331,6 +331,7 @@ export default function MoviesPage() {
                   src={movie.coverUrl}
                   alt={movie.title || movie.filename}
                   onError={(e) => {
+                    console.error("图片加载失败:", e.currentTarget.src);
                     e.currentTarget.src = "/placeholder-image.svg";
                   }}
                   className="w-full h-auto object-contain"

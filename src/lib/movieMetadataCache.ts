@@ -10,7 +10,7 @@ interface MovieMetadata {
 }
 
 const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
-const CACHE_EXPIRATION_DAYS = 30;
+
 
 async function readCache(): Promise<MovieMetadata[]> {
   try {
@@ -31,15 +31,8 @@ export async function getCachedMovieMetadata(code: string): Promise<MovieMetadat
   const cachedMetadata = cache.find(item => item.code === code);
 
   if (cachedMetadata) {
-    // 检查缓存是否过期
-    const currentTime = Date.now();
-    const daysSinceUpdate = (currentTime - cachedMetadata.lastUpdated) / (1000 * 60 * 60 * 24);
-    
-    if (daysSinceUpdate < CACHE_EXPIRATION_DAYS) {
-      return cachedMetadata;
-    }
+    return cachedMetadata;
   }
-
   return null;
 }
 
@@ -62,10 +55,10 @@ export async function updateMovieMetadataCache(
     };
 
     if (existingIndex !== -1) {
-      console.log(`[updateMovieMetadataCache] 更新缓存 - 番号: ${code}`);
+      console.log(`[updateMovieMetadataCache] 更新缓存 - 番号: ${code} 封面:${coverUrl} 番名:${title} 女优:${actress}`);
       cache[existingIndex] = newEntry;
     } else {
-      console.log(`[updateMovieMetadataCache] 添加缓存 - 番号: ${code}`);
+      console.log(`[updateMovieMetadataCache] 更新缓存 - 番号: ${code} 封面:${coverUrl} 番名:${title} 女优:${actress}`);
       cache.push(newEntry);
     }
 

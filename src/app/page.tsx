@@ -10,7 +10,7 @@ export default function Home() {
     async function checkDirectory() {
       try {
         const response = await fetch("/api/movies", { method: "PUT" });
-        console.log("put response:", response);
+        // console.log("put response:", response);
         if (response.ok) {
           router.push("/movies");
         }

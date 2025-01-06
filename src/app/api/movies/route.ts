@@ -55,7 +55,10 @@ async function fetchCoverUrl(code: string) {
   // 首先检查缓存
   const cachedMetadata = await getCachedMovieMetadata(code);
   if (cachedMetadata) {
-    // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code}`);
+    // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code} 
+    //   coverUrl: ${cachedMetadata.coverUrl},
+    //   title: ${cachedMetadata.title},
+    //   actress: ${cachedMetadata.actress},`);
     return {
       coverUrl: cachedMetadata.coverUrl,
       title: cachedMetadata.title,
@@ -100,12 +103,12 @@ async function fetchCoverUrl(code: string) {
         }, selector);
 
         if (coverUrl) {
-          console.log(
-            `[fetchCoverUrl] 使用选择器 ${selector} 找到封面: ${coverUrl}`
-          );
+          // console.log(
+          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到封面: ${coverUrl}`
+          // );
           break;
         } else {
-          console.log(`[fetchCoverUrl] 选择器 ${selector} 未找到封面`);
+          console.log(`[error] 选择器 ${selector} 未找到封面`);
         }
       }
 
@@ -119,12 +122,12 @@ async function fetchCoverUrl(code: string) {
           return titleElement ? titleElement.textContent?.trim() || null : null;
         }, selector);
         if (title && title !== "null") {
-          console.log(
-            `[fetchCoverUrl] 使用选择器 ${selector} 找到标题: ${title}`
-          );
+          // console.log(
+          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到标题: ${title}`
+          // );
           break;
         } else {
-          console.log(`[fetchCoverUrl] 选择器 ${selector} 未找到标题`);
+          console.log(`[error] 选择器 ${selector} 未找到标题`);
         }
       }
 
@@ -142,25 +145,28 @@ async function fetchCoverUrl(code: string) {
             : "unknow";
         });
         if (actress && actress !== "unknow") {
-          console.log(
-            `[fetchCoverUrl] 使用选择器 ${selector} 找到女优: ${actress}`
-          );
+          // console.log(
+          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到女优: ${actress}`
+          // );
           break;
         } else {
-          console.log(`[fetchCoverUrl] 选择器 ${selector} 未找到女优`);
+          console.log(`[error] 选择器 ${selector} 未找到女优`);
         }
       }
 
       await browser.close();
-      console.log(
-        `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
-      );
-      if(!coverUrl){
+
+      if (coverUrl) {
+        console.log(
+          `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
+        );
         await updateMovieMetadataCache(code, coverUrl, title, actress);
+      } else {
+        console.log(
+          `[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
+        );
       }
       // 更新缓存
-      
-
       return {
         coverUrl,
         title,
@@ -183,7 +189,7 @@ async function fetchCoverUrl(code: string) {
 async function processMovieFiles(movieFiles: MovieFile[]) {
   // console.log(movieFiles);
   // 按文件大小降序排序
-  const sortedMovies = movieFiles.sort((a, b) => b.size - a.size);
+  const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   // 限制处理前20个文件
   // todo
@@ -246,7 +252,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
 
   // 打印重复文件信息
   if (duplicateMovies.length > 0) {
-    console.log("-----------------检测到重复文件:");
+    console.log("检测到重复文件:");
     duplicateMovies.forEach((movie) => {
       console.log(`重复文件: 
   - 文件名: ${movie.filename}
