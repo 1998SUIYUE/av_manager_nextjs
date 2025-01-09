@@ -323,7 +323,9 @@ export default function MoviesPage() {
           <div
             key={movie.filename}
             className="cursor-pointer  bg-white shadow-md rounded-lg overflow-hidden"
-            onClick={() => handleMovieClick(movie)}
+            onClick={() => handleMovieClick(movie)
+            }
+            id = {sortedMovies.indexOf(movie).toString()}
           >
             {movie.coverUrl ? (
               <div className="aspect-auto w-full">

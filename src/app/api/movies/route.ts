@@ -81,8 +81,8 @@ async function fetchCoverUrl(code: string) {
     });
     const page = await context.newPage();
     // console.log(`[fetchCoverUrl] 新页面创建成功`);
-
-    const url = `https://missav.com/dm13/cn/${code}`;
+    const url = `https://jable.tv/videos/${code}/`
+    // const url = `https://missav.com/dm13/cn/${code}`;
     console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
@@ -93,13 +93,13 @@ async function fetchCoverUrl(code: string) {
       // console.log(`[fetchCoverUrl] 页面加载完成`);
 
       // 获取封面图
-      const coverSelectors = [`video.player`];
+      const coverSelectors = [`#player`];
       let coverUrl = null;
       for (const selector of coverSelectors) {
         // console.log(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
         coverUrl = await page.evaluate((sel) => {
           const coverLink = document.querySelector(sel);
-          return coverLink ? coverLink.getAttribute("data-poster") : null;
+          return coverLink ? coverLink.getAttribute("poster") : null;
         }, selector);
 
         if (coverUrl) {
@@ -108,12 +108,13 @@ async function fetchCoverUrl(code: string) {
           // );
           break;
         } else {
-          console.log(`[error] 选择器 ${selector} 未找到封面`);
+          coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`
+          console.log(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
         }
       }
 
       // 获取番名
-      const titleSelectors = ["h1.text-base.lg\\:text-lg.text-nord6"];
+      const titleSelectors = [`#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h4`];
       let title = null;
       for (const selector of titleSelectors) {
         // console.log(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
@@ -127,23 +128,26 @@ async function fetchCoverUrl(code: string) {
           // );
           break;
         } else {
+          
           console.log(`[error] 选择器 ${selector} 未找到标题`);
         }
       }
 
       // 获取女优名字
-      const actressSelectors = ["span:contains(女优:)"];
+      const actressSelectors = [`#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h6 > div > a > span`,
+                                `#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h6 > div > a > span`];
       let actress = "unknow";
       for (const selector of actressSelectors) {
         // console.log(`[fetchCoverUrl] 尝试女优选择器: ${selector}`);
-        actress = await page.evaluate(() => {
-          const actressSpan = Array.from(
-            document.querySelectorAll("span")
-          ).find((span) => span.textContent?.includes("女优:"));
-          return actressSpan
-            ? actressSpan.nextElementSibling?.textContent?.trim() || "unknow"
-            : "unknow";
-        });
+        actress = await page.evaluate((se) => {
+          const name_el = document.querySelector(se)
+          const name = name_el?.getAttribute("data-original-title")
+          if(name != null){
+            return name
+          }else{
+            return "unknow"
+          }
+        },selector);
         if (actress && actress !== "unknow") {
           // console.log(
           //   `[fetchCoverUrl] 使用选择器 ${selector} 找到女优: ${actress}`
