@@ -81,25 +81,33 @@ async function fetchCoverUrl(code: string) {
     });
     const page = await context.newPage();
     // console.log(`[fetchCoverUrl] 新页面创建成功`);
-    const url = `https://jable.tv/videos/${code}/`
+    const url = `https://javdb.com/search?q=${code}&f=all/`
     // const url = `https://missav.com/dm13/cn/${code}`;
     console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
       await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 30000,
+        timeout: 10000,
       });
       // console.log(`[fetchCoverUrl] 页面加载完成`);
-
+      const right_url = await page.evaluate(() => {
+        const right_url = document.querySelector("body > section > div > div.movie-list.h.cols-4.vcols-8 > div:nth-child(1) > a")?.getAttribute("href")
+        return right_url
+      })
+      await page.goto(`https://javdb.com${right_url}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 10000,
+      });
+      console.log(`[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`);
       // 获取封面图
-      const coverSelectors = [`#player`];
+      const coverSelectors = [`body > section > div > div.video-detail > div.video-meta-panel > div > div.column.column-video-cover > a > img`];
       let coverUrl = null;
       for (const selector of coverSelectors) {
         // console.log(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
         coverUrl = await page.evaluate((sel) => {
           const coverLink = document.querySelector(sel);
-          return coverLink ? coverLink.getAttribute("poster") : null;
+          return coverLink ? coverLink.getAttribute("src") : null;
         }, selector);
 
         if (coverUrl) {
@@ -114,7 +122,7 @@ async function fetchCoverUrl(code: string) {
       }
 
       // 获取番名
-      const titleSelectors = [`#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h4`];
+      const titleSelectors = [`body > section > div > div.video-detail > h2 > strong.current-title`];
       let title = null;
       for (const selector of titleSelectors) {
         // console.log(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
@@ -134,14 +142,16 @@ async function fetchCoverUrl(code: string) {
       }
 
       // 获取女优名字
-      const actressSelectors = [`#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h6 > div > a > span`,
-                                `#site-content > div > div > div:nth-child(1) > section.video-info.pb-3 > div.info-header > div.header-left > h6 > div > a > span`];
+      const actressSelectors = 
+      [`body > section > div > div.video-detail > div.video-meta-panel > div > div:nth-child(2) > nav > div:nth-child(9) > span > a:nth-child(1)`,
+        `body > section > div > div.video-detail > div.video-meta-panel > div > div:nth-child(2) > nav > div:nth-child(8) > span > a:nth-child(1)`
+      ];
       let actress = "unknow";
       for (const selector of actressSelectors) {
         // console.log(`[fetchCoverUrl] 尝试女优选择器: ${selector}`);
         actress = await page.evaluate((se) => {
           const name_el = document.querySelector(se)
-          const name = name_el?.getAttribute("data-original-title")
+          const name = name_el?.textContent?.trim();
           if(name != null){
             return name
           }else{
@@ -159,8 +169,8 @@ async function fetchCoverUrl(code: string) {
       }
 
       await browser.close();
-
-      if (coverUrl) {
+// 更新缓存
+      if (title) {
         console.log(
           `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
@@ -170,7 +180,7 @@ async function fetchCoverUrl(code: string) {
           `[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
       }
-      // 更新缓存
+      
       return {
         coverUrl,
         title,
@@ -178,7 +188,7 @@ async function fetchCoverUrl(code: string) {
       };
     } catch (navigationError) {
       console.error(`[fetchCoverUrl] 页面导航错误:`, navigationError);
-      await page.screenshot({ path: `error_screenshot_${code}.png` });
+      
       return { coverUrl: null, title: null, actress: null };
     }
   } catch (error) {
@@ -197,7 +207,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
 
   // 限制处理前20个文件
   // todo
-  // const limitedMovies = sortedMovies.slice(0, 10);
+  // const limitedMovies = sortedMovies.slice(0, 50);
   const limitedMovies = sortedMovies;
   // 使用信号量控制并发
   const concurrencyLimit = 5;

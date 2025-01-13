@@ -15,6 +15,9 @@ const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
 async function readCache(): Promise<MovieMetadata[]> {
   try {
     const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
+    if (!cacheContent || cacheContent.trim() === '') {
+      return [];
+    }
     return JSON.parse(cacheContent);
   } catch (error) {
     console.error('Error reading movie metadata cache:', error);
