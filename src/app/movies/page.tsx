@@ -348,7 +348,7 @@ export default function MoviesPage() {
             )}
             <div className="p-4">
               <h2 className="text-sm font-semibold truncate mb-2 text-black">
-                {movie.displayTitle || movie.filename}
+                {movie.code}{movie.displayTitle || movie.filename}
               </h2>
               {movie.actress && (
                 <p className="text-xs truncate text-black">{movie.actress}</p>
