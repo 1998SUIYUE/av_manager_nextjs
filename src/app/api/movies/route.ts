@@ -55,7 +55,7 @@ async function fetchCoverUrl(code: string) {
   // 首先检查缓存
   const cachedMetadata = await getCachedMovieMetadata(code);
   if (cachedMetadata) {
-    // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code} 
+    // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code}
     //   coverUrl: ${cachedMetadata.coverUrl},
     //   title: ${cachedMetadata.title},
     //   actress: ${cachedMetadata.actress},`);
@@ -81,7 +81,7 @@ async function fetchCoverUrl(code: string) {
     });
     const page = await context.newPage();
     // console.log(`[fetchCoverUrl] 新页面创建成功`);
-    const url = `https://javdb.com/search?q=${code}&f=all/`
+    const url = `https://javdb.com/search?q=${code}&f=all/`;
     // const url = `https://missav.com/dm13/cn/${code}`;
     console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
@@ -92,16 +92,24 @@ async function fetchCoverUrl(code: string) {
       });
       // console.log(`[fetchCoverUrl] 页面加载完成`);
       const right_url = await page.evaluate(() => {
-        const right_url = document.querySelector("body > section > div > div.movie-list.h.cols-4.vcols-8 > div:nth-child(1) > a")?.getAttribute("href")
-        return right_url
-      })
+        const right_url = document
+          .querySelector(
+            "body > section > div > div.movie-list.h.cols-4.vcols-8 > div:nth-child(1) > a"
+          )
+          ?.getAttribute("href");
+        return right_url;
+      });
       await page.goto(`https://javdb.com${right_url}`, {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      console.log(`[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`);
+      console.log(
+        `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
+      );
       // 获取封面图
-      const coverSelectors = [`body > section > div > div.video-detail > div.video-meta-panel > div > div.column.column-video-cover > a > img`];
+      const coverSelectors = [
+        `body > section > div > div.video-detail > div.video-meta-panel > div > div.column.column-video-cover > a > img`,
+      ];
       let coverUrl = null;
       for (const selector of coverSelectors) {
         // console.log(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
@@ -116,13 +124,17 @@ async function fetchCoverUrl(code: string) {
           // );
           break;
         } else {
-          coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`
-          console.log(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
+          coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
+          console.log(
+            `[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`
+          );
         }
       }
 
       // 获取番名
-      const titleSelectors = [`body > section > div > div.video-detail > h2 > strong.current-title`];
+      const titleSelectors = [
+        `body > section > div > div.video-detail > h2 > strong.current-title`,
+      ];
       let title = null;
       for (const selector of titleSelectors) {
         // console.log(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
@@ -136,40 +148,26 @@ async function fetchCoverUrl(code: string) {
           // );
           break;
         } else {
-          
           console.log(`[error] 选择器 ${selector} 未找到标题`);
         }
       }
 
       // 获取女优名字
-      const actressSelectors = 
-      [`body > section > div > div.video-detail > div.video-meta-panel > div > div:nth-child(2) > nav > div:nth-child(9) > span > a:nth-child(1)`,
-        `body > section > div > div.video-detail > div.video-meta-panel > div > div:nth-child(2) > nav > div:nth-child(8) > span > a:nth-child(1)`
-      ];
-      let actress = "unknow";
-      for (const selector of actressSelectors) {
-        // console.log(`[fetchCoverUrl] 尝试女优选择器: ${selector}`);
-        actress = await page.evaluate((se) => {
-          const name_el = document.querySelector(se)
-          const name = name_el?.textContent?.trim();
-          if(name != null){
-            return name
-          }else{
-            return "unknow"
-          }
-        },selector);
-        if (actress && actress !== "unknow") {
-          // console.log(
-          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到女优: ${actress}`
-          // );
-          break;
-        } else {
-          console.log(`[error] 选择器 ${selector} 未找到女优`);
-        }
-      }
+      // body > section > div > div.video-detail > div.video-meta-panel > div > div:nth-child(2) > nav > div:nth-child(10) > span > a:nth-child(1)
 
+      let actress = "unknow";
+      const actress_name = await page
+        .locator('strong:has-text("演員:")')
+        .locator(".. >> span.value >> a")
+        .first()
+        .textContent();
+      if (actress_name) {
+        actress = actress_name;
+      } else {
+        actress = "unknow";
+      }
       await browser.close();
-// 更新缓存
+      // 更新缓存
       if (title) {
         console.log(
           `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
@@ -180,7 +178,7 @@ async function fetchCoverUrl(code: string) {
           `[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
       }
-      
+
       return {
         coverUrl,
         title,
@@ -188,7 +186,7 @@ async function fetchCoverUrl(code: string) {
       };
     } catch (navigationError) {
       console.error(`[fetchCoverUrl] 页面导航错误:`, navigationError);
-      
+
       return { coverUrl: null, title: null, actress: null };
     }
   } catch (error) {
