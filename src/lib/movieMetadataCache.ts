@@ -26,7 +26,20 @@ async function readCache(): Promise<MovieMetadata[]> {
 }
 
 async function writeCache(cache: MovieMetadata[]) {
-  await fs.writeFile(CACHE_FILE_PATH, JSON.stringify(cache, null, 2), 'utf-8');
+  // 写入前校验数据有效性，避免写入空数组或无效数据
+  if (!Array.isArray(cache) || cache.length === 0) {
+    console.warn('[writeCache] 拒绝写入空缓存，保留原有内容');
+    return;
+  }
+  const tmpFile = CACHE_FILE_PATH + '.tmp';
+  try {
+    await fs.writeFile(tmpFile, JSON.stringify(cache, null, 2), 'utf-8');
+    await fs.rename(tmpFile, CACHE_FILE_PATH);
+  } catch (err) {
+    console.error('[writeCache] 写入缓存失败，保留原有内容:', err);
+    // 写入失败时不覆盖原有缓存
+    try { await fs.unlink(tmpFile); } catch (_) {}
+  }
 }
 
 export async function getCachedMovieMetadata(code: string): Promise<MovieMetadata | null> {
