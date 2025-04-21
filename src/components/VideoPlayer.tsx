@@ -13,6 +13,19 @@ interface VideoError {
   details?: string;
 }
 
+// 定义视频技术信息接口
+interface VideoTechInfo {
+  resolution: string;
+  frameRate: number | string;
+  codec: string;
+  bitrate: string;
+  dropFrames: number;
+  performanceIndex: number;
+  bufferingTime: number;
+  hardwareAcceleration: boolean;
+  renderMode: string;
+}
+
 // 获取媒体错误信息的辅助函数
 function getMediaErrorMessage(code: number): string {
   switch (code) {
@@ -27,6 +40,127 @@ function getMediaErrorMessage(code: number): string {
     default:
       return "未知错误";
   }
+}
+
+// 辅助函数：检测编解码器类型
+async function detectCodec(videoSrc: string): Promise<string> {
+  try {
+    // 创建一个临时的视频元素
+    const tempVideo = document.createElement('video');
+    tempVideo.style.display = 'none';
+    document.body.appendChild(tempVideo);
+    
+    return new Promise((resolve) => {
+      // 设置元数据加载处理
+      tempVideo.onloadedmetadata = async () => {
+        try {
+          // 尝试使用MediaSource扩展API获取编解码信息
+          let codecInfo = "未知";
+          
+          // 首先尝试从video元素直接获取
+          // @ts-expect-error - 访问非标准属性
+          if (tempVideo.videoTracks && tempVideo.videoTracks.length > 0) {
+            // @ts-expect-error - 访问非标准属性
+            const track = tempVideo.videoTracks[0];
+            if (track.codec) {
+              codecInfo = track.codec;
+            }
+          }
+          
+          // 如果无法获取，尝试分析源URL中的信息
+          if (codecInfo === "未知") {
+            const lowerSrc = videoSrc.toLowerCase();
+            if (lowerSrc.includes('avc1') || lowerSrc.includes('h264')) {
+              codecInfo = "H.264 / AVC";
+            } else if (lowerSrc.includes('hevc') || lowerSrc.includes('h265') || lowerSrc.includes('hev1')) {
+              codecInfo = "H.265 / HEVC";
+            } else if (lowerSrc.includes('av1')) {
+              codecInfo = "AV1";
+            } else if (lowerSrc.includes('vp9')) {
+              codecInfo = "VP9";
+            } else if (lowerSrc.includes('vp8')) {
+              codecInfo = "VP8";
+            }
+          }
+          
+          // 高级检测：通过创建一个MediaSource尝试获取
+          if (codecInfo === "未知" && window.MediaSource) {
+            if (MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) {
+              // 文件很可能是H.264编码
+              codecInfo = "可能为 H.264";
+            } else if (MediaSource.isTypeSupported('video/mp4; codecs="hev1.1.6.L93.B0"')) {
+              // 文件可能是HEVC/H.265编码
+              codecInfo = "可能为 H.265";
+            }
+            
+            // 检查文件扩展名辅助判断
+            const extension = videoSrc.split('.').pop()?.toLowerCase();
+            if (extension === 'mp4') {
+              codecInfo += codecInfo === "未知" ? "MP4 (可能是 H.264)" : "";
+            } else if (extension === 'mkv') {
+              codecInfo += codecInfo === "未知" ? "MKV (可能是 H.264/H.265)" : "";
+            } else if (extension === 'webm') {
+              codecInfo += codecInfo === "未知" ? "WebM (可能是 VP8/VP9)" : "";
+            }
+          }
+          
+          resolve(codecInfo);
+        } catch (err) {
+          console.error("编解码器检测错误:", err);
+          resolve("未知 (检测出错)");
+        } finally {
+          // 清理临时元素
+          document.body.removeChild(tempVideo);
+        }
+      };
+      
+      tempVideo.onerror = () => {
+        document.body.removeChild(tempVideo);
+        resolve("未知 (加载失败)");
+      };
+      
+      // 设置源并加载
+      tempVideo.src = videoSrc;
+      tempVideo.load();
+      
+      // 设置超时以防止无限等待
+      setTimeout(() => {
+        if (document.body.contains(tempVideo)) {
+          document.body.removeChild(tempVideo);
+          resolve("未知 (检测超时)");
+        }
+      }, 3000);
+    });
+  } catch (error) {
+    console.error("编解码器检测过程错误:", error);
+    return "未知 (检测过程异常)";
+  }
+}
+
+// 检测硬件加速状态
+function isHardwareAccelerated(): boolean {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  
+  if (!gl) {
+    return false;
+  }
+  
+  // 安全检查WebGL上下文
+  if (!('getExtension' in gl)) {
+    return false;
+  }
+  
+  const webGLContext = gl as WebGLRenderingContext;
+  const debugInfo = webGLContext.getExtension('WEBGL_debug_renderer_info');
+  if (debugInfo) {
+    const renderer = webGLContext.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+    // 如果渲染器字符串包含GPU信息，则可能使用了硬件加速
+    const gpuIndicators = ['nvidia', 'amd', 'radeon', 'intel', 'geforce', 'gpu', 'hardware'];
+    return gpuIndicators.some(indicator => renderer.toLowerCase().includes(indicator));
+  }
+  
+  return false;
 }
 
 interface VideoPlayerProps {
@@ -46,6 +180,21 @@ interface VideoPlayerProps {
   onLoadStart?: () => void;
   onCanPlay?: () => void;
   onProgress?: (progress: { buffered: number; duration: number }) => void;
+}
+
+// 扩展HTML视频元素的类型，以处理非标准属性
+interface ExtendedHTMLVideoElement {
+  webkitVideoDecodedByteCount?: number;
+  mozParsedFrames?: number;
+  mozDecodedFrames?: number;
+  webkitDecodedFrameCount?: number;
+  webkitDroppedFrameCount?: number;
+  getVideoPlaybackQuality?: () => {
+    droppedVideoFrames: number;
+    totalVideoFrames: number;
+  };
+  // 实验性API
+  preservesPitch?: boolean;
 }
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -69,6 +218,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<VideoError | null>(null);
+  const [showTechInfo, setShowTechInfo] = useState(true);
+  const [techInfo, setTechInfo] = useState<VideoTechInfo>({
+    resolution: "--",
+    frameRate: "--",
+    codec: "--",
+    bitrate: "--",
+    dropFrames: 0,
+    performanceIndex: 0,
+    bufferingTime: 0,
+    hardwareAcceleration: false,
+    renderMode: "--"
+  });
+  
+  // 添加显示/隐藏技术信息的切换函数
+  const toggleTechInfo = useCallback(() => {
+    setShowTechInfo((prev) => !prev);
+  }, []);
 
   // 性能优化：使用 useCallback 缓存事件处理函数
   const handleError = useCallback(
@@ -100,7 +266,119 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleCanPlay = useCallback(() => {
     setIsLoading(false);
     if (onCanPlay) onCanPlay();
-  }, [onCanPlay]);
+    
+    // 视频可以播放时，尝试获取视频信息
+    updateVideoTechInfo();
+    
+    // 检测编解码器
+    detectCodec(src).then(codecInfo => {
+      setTechInfo(prev => ({
+        ...prev,
+        codec: codecInfo
+      }));
+    });
+    
+    // 检测硬件加速
+    const hwAccel = isHardwareAccelerated();
+    setTechInfo(prev => ({ 
+      ...prev, 
+      hardwareAcceleration: hwAccel,
+      renderMode: hwAccel ? "GPU 加速" : "软件渲染"
+    }));
+    
+  }, [onCanPlay, src]);
+
+  // 更新视频技术信息
+  const updateVideoTechInfo = useCallback(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+    
+    // 获取视频宽高
+    const width = videoElement.videoWidth;
+    const height = videoElement.videoHeight;
+    
+    // 尝试获取更多技术信息
+    try {
+      // 尝试获取帧率信息
+      let frameRate = "--";
+      if ('requestVideoFrameCallback' in videoElement) {
+        // 高级浏览器支持帧回调，可以用来计算帧率
+        frameRate = "自动";
+      }
+      
+      let bitrate = "--";
+      
+      // 计算估计比特率（如果播放时间大于0）
+      if (videoElement.currentTime > 0) {
+        // 安全地访问非标准属性，先转为unknown再转为扩展接口
+        const extendedVideo = videoElement as unknown as ExtendedHTMLVideoElement;
+        
+        if (extendedVideo.webkitVideoDecodedByteCount) {
+          const bitRateKbps = Math.round((extendedVideo.webkitVideoDecodedByteCount * 8) / videoElement.currentTime / 1000);
+          bitrate = `${bitRateKbps} kbps`;
+        }
+      }
+      
+      // 尝试使用chrome媒体信息API (非标准)
+      let dropFrames = 0;
+      let performanceIndex = 100;
+      
+      // 安全地访问非标准方法，先转为unknown再转为扩展接口
+      const extendedVideo = videoElement as unknown as ExtendedHTMLVideoElement;
+      
+      // 检查不同浏览器的API
+      if (extendedVideo.getVideoPlaybackQuality) {
+        const quality = extendedVideo.getVideoPlaybackQuality();
+        
+        if (quality) {
+          dropFrames = quality.droppedVideoFrames || 0;
+          const totalFrames = quality.totalVideoFrames || 0;
+          performanceIndex = totalFrames > 0 ? Math.round((1 - dropFrames / totalFrames) * 100) : 100;
+          
+          // 尝试计算实际帧率
+          if (videoElement.currentTime > 0 && totalFrames > 0) {
+            const estimatedFps = Math.round(totalFrames / videoElement.currentTime);
+            if (estimatedFps > 0) {
+              frameRate = `${estimatedFps} fps`;
+            }
+          }
+        }
+      } else if (extendedVideo.mozParsedFrames && extendedVideo.mozDecodedFrames) {
+        // Firefox特有API
+        const mozParsed = extendedVideo.mozParsedFrames;
+        const mozDecoded = extendedVideo.mozDecodedFrames;
+        
+        dropFrames = mozParsed - mozDecoded;
+        performanceIndex = mozParsed ? Math.round((mozDecoded / mozParsed) * 100) : 100;
+      } else if (extendedVideo.webkitDecodedFrameCount !== undefined && 
+                extendedVideo.webkitDroppedFrameCount !== undefined) {
+        // Webkit特有API
+        const decodedFrames = extendedVideo.webkitDecodedFrameCount;
+        const droppedWebkitFrames = extendedVideo.webkitDroppedFrameCount;
+        
+        dropFrames = droppedWebkitFrames || 0;
+        const totalFrames = (decodedFrames || 0) + dropFrames;
+        performanceIndex = totalFrames > 0 ? Math.round((1 - dropFrames / totalFrames) * 100) : 100;
+      }
+      
+      // 更新技术信息状态
+      setTechInfo(prev => ({
+        ...prev,
+        resolution: `${width}x${height}`,
+        frameRate: frameRate,
+        bitrate: bitrate,
+        dropFrames: dropFrames,
+        performanceIndex: performanceIndex,
+      }));
+    } catch (error) {
+      console.error("获取视频技术信息失败:", error);
+      // 至少保存分辨率信息
+      setTechInfo((prev) => ({
+        ...prev,
+        resolution: `${width}x${height}`,
+      }));
+    }
+  }, []);
 
   const handleProgress = useCallback(() => {
     const videoElement = videoRef.current;
@@ -115,7 +393,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         duration: videoElement.duration,
       });
     }
-  }, [onProgress]);
+    
+    // 周期性更新技术信息
+    updateVideoTechInfo();
+  }, [onProgress, updateVideoTechInfo]);
 
   // 性能和功能优化：使用 useEffect 管理视频状态
   useEffect(() => {
@@ -132,12 +413,32 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       videoElement.currentTime = seekSeconds;
     }
 
+    // 尝试设置最佳性能
+    try {
+      // 设置高性能提示
+      const extendedVideo = videoElement as unknown as ExtendedHTMLVideoElement;
+      if ('preservesPitch' in videoElement) {
+        extendedVideo.preservesPitch = false;
+      }
+      
+      // 添加允许高性能提示
+      const videoEl = videoElement as HTMLElement;
+      if (videoEl.style) {
+        // 提示浏览器使用硬件加速
+        videoEl.style.transform = 'translateZ(0)';
+        videoEl.style.backfaceVisibility = 'hidden';
+      }
+    } catch (e) {
+      console.warn("设置视频高性能模式失败", e);
+    }
+
     // 事件监听器
     const events = [
       { name: "error", handler: handleError },
       { name: "loadstart", handler: handleLoadStart },
       { name: "canplay", handler: handleCanPlay },
       { name: "progress", handler: handleProgress },
+      { name: "timeupdate", handler: updateVideoTechInfo }, // 添加时间更新时的技术信息更新
     ];
 
     events.forEach((event) => {
@@ -159,6 +460,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleLoadStart,
     handleCanPlay,
     handleProgress,
+    updateVideoTechInfo,
   ]);
 
   // 添加键盘事件处理
@@ -175,6 +477,24 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           currentTime + forwardSeconds,
           videoElement.duration
         );
+      } else if (e.key === "ArrowLeft") {
+        // 添加左键快退
+        e.preventDefault();
+        const currentTime = videoElement.currentTime;
+        videoElement.currentTime = Math.max(currentTime - forwardSeconds, 0);
+      } else if (e.key === " ") {
+        // 空格键暂停/播放
+        e.preventDefault();
+        if (videoElement.paused) {
+          videoElement.play();
+        } else {
+          videoElement.pause();
+        }
+      }
+      
+      // 切换技术信息显示 (按 I 键)
+      if (e.key === "i" || e.key === "I") {
+        toggleTechInfo();
       }
     };
 
@@ -182,7 +502,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [forwardSeconds]);
+  }, [forwardSeconds, toggleTechInfo]);
 
   const openInExplorer = async () => {
     try {
@@ -230,6 +550,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       </div>
     );
   }, [isLoading]);
+  
+  // 视频技术信息显示
+  const TechInfoDisplay = useMemo(() => {
+    if (!showTechInfo) return null;
+    
+    return (
+      <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white p-2 rounded text-xs z-10 font-mono">
+        <div>分辨率: {techInfo.resolution}</div>
+        <div>帧率: {techInfo.frameRate}</div>
+        <div>编解码器: {techInfo.codec}</div>
+        <div>比特率: {techInfo.bitrate}</div>
+        <div>丢帧数: {techInfo.dropFrames}</div>
+        <div>性能指数: {techInfo.performanceIndex}%</div>
+        <div>硬件加速: {techInfo.hardwareAcceleration ? "已启用" : "未启用"}</div>
+        <div>渲染模式: {techInfo.renderMode}</div>
+        <div className="mt-1 text-gray-300 text-[10px]">按 I 键切换信息显示</div>
+      </div>
+    );
+  }, [showTechInfo, techInfo]);
 
   return (
     <div className="relative w-full group">
@@ -261,6 +600,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
         </div>
       )}
+      {TechInfoDisplay}
       {LoadingIndicator}
       {ErrorDisplay}
     </div>
