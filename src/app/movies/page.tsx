@@ -322,7 +322,7 @@ export default function MoviesPage() {
         {sortedMovies.map((movie) => (
           <div
             key={movie.filename}
-            className="cursor-pointer  bg-white shadow-md rounded-lg overflow-hidden"
+            className="cursor-pointer bg-gray-800 shadow-md rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
             onClick={() => handleMovieClick(movie)
             }
             id = {sortedMovies.indexOf(movie).toString()}
@@ -347,13 +347,13 @@ export default function MoviesPage() {
               />
             )}
             <div className="p-4">
-              <h2 className="text-sm font-semibold truncate mb-2 text-black">
+              <h2 className="text-sm font-semibold truncate mb-2 text-gray-100">
                 {movie.code}{movie.displayTitle || movie.filename}
               </h2>
               {movie.actress && (
-                <p className="text-xs truncate text-black">{movie.actress}</p>
+                <p className="text-xs truncate text-gray-300">{movie.actress}</p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-400 mt-1">
                 {formatFileSize(movie.size)}
               </p>
             </div>

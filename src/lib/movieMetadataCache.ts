@@ -38,7 +38,7 @@ async function writeCache(cache: MovieMetadata[]) {
   } catch (err) {
     console.error('[writeCache] 写入缓存失败，保留原有内容:', err);
     // 写入失败时不覆盖原有缓存
-    try { await fs.unlink(tmpFile); } catch (_) {}
+    try { await fs.unlink(tmpFile); } catch (_) {console.log('删除临时文件失败',_);}
   }
 }
 
