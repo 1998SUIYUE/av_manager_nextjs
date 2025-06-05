@@ -5,6 +5,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -14,8 +15,71 @@
   }
 }
 
+/* 基础滚动优化 */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none; /* 防止iOS上的橡皮筋效果 */
+}
+
+/* 移动设备优化 */
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+  
+  /* 确保输入框和按钮更容易点击 */
+  input, 
+  button {
+    font-size: 16px; /* 避免iOS自动缩放 */
+    min-height: 44px; /* 符合苹果触摸指南 */
+  }
+  
+  /* 优化图片加载 */
+  img {
+    transition: opacity 0.3s ease;
+  }
+  
+  img[loading="lazy"] {
+    opacity: 0;
+  }
+  
+  img.loaded {
+    opacity: 1;
+  }
+  
+  /* 滚动容器优化 */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none; /* Chrome, Safari */
+  }
+}
+
+/* 视频播放器容器 */
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9宽高比 */
+  overflow: hidden;
+}
+
+.video-container video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
