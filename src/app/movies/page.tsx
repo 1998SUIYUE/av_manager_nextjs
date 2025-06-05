@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
+import axios from "axios";
 
 interface MovieFile {
   filename: string;
@@ -17,6 +18,7 @@ interface MovieFile {
   modifiedAt: number;
   code?: string;
   coverUrl?: string;
+  localCoverUrl?: string;
   actress?: string;
 }
 
@@ -33,6 +35,18 @@ export default function MoviesPage() {
 
   const [forwardSeconds, setForwardSeconds] = useState(10);
 
+  const getLocalCoverUrl = async (remoteUrl: string | undefined) => {
+    if (!remoteUrl) return "/placeholder-image.svg";
+    
+    try {
+      const response = await axios.get(`/api/image-proxy?url=${encodeURIComponent(remoteUrl)}`);
+      return response.data.imageUrl;
+    } catch (error) {
+      console.error("获取本地图片缓存失败:", error);
+      return "/placeholder-image.svg";
+    }
+  };
+
   useEffect(() => {
     async function fetchMovies() {
       try {
@@ -44,7 +58,19 @@ export default function MoviesPage() {
         }
         const data = await response.json();
         console.log("接收到的电影数据:", data);
-        setMovies(data);
+        
+        const moviesWithLocalCovers = await Promise.all(
+          data.map(async (movie: MovieFile) => {
+            if (movie.coverUrl) {
+              movie.localCoverUrl = await getLocalCoverUrl(movie.coverUrl);
+            } else {
+              movie.localCoverUrl = "/placeholder-image.svg";
+            }
+            return movie;
+          })
+        );
+        
+        setMovies(moviesWithLocalCovers);
         setIsLoading(false);
       } catch (err) {
         console.error("Error fetching movies:", err);
@@ -57,15 +83,6 @@ export default function MoviesPage() {
     fetchMovies();
   }, []);
 
-  // 获取所有女优名字
-  // const actresses = useMemo(() => {
-  //   const actressSet = new Set(
-  //     movies
-  //       .map((movie) => movie.actress)
-  //       .filter((actress) => actress !== undefined)
-  //   );
-  //   return Array.from(actressSet).sort();
-  // }, [movies]);
   const actresses = useMemo(() => {
     const actressCount: Record<string, number> = {};
 
@@ -77,12 +94,11 @@ export default function MoviesPage() {
       }
     });
 
-    // 将女优和出现次数转换为数组并排序
     return Object.entries(actressCount)
       .map(([actress, count]) => ({ actress, count }))
       .sort((a, b) => b.count - a.count);
   }, [movies]);
-  // 过滤电影列表
+
   const filteredMovies = useMemo(() => {
     let result = movies;
 
@@ -103,7 +119,6 @@ export default function MoviesPage() {
     return result;
   }, [movies, searchTerm, selectedActress]);
 
-  // 排序电影列表
   const sortedMovies = useMemo(() => {
     return [...filteredMovies].sort((a, b) => {
       if (sortMode === "time") {
@@ -116,7 +131,6 @@ export default function MoviesPage() {
     });
   }, [filteredMovies, sortMode, timeOrder, sizeOrder]);
 
-  // 格式化文件大小的工具函数
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -289,7 +303,6 @@ export default function MoviesPage() {
         </div>
       </div>
 
-      {/* 女优按钮区域 */}
       <div className=" flex flex-wrap gap-2  bg-black pb-4">
         <button
           key="all"
@@ -304,8 +317,8 @@ export default function MoviesPage() {
         </button>
         {actresses.map((Record) => (
           <button
-            key={Record.actress} // 修改为使用 Record.actress 作为 key
-            onClick={() => setSelectedActress(Record.actress)} // 修改为使用 Record.actress
+            key={Record.actress}
+            onClick={() => setSelectedActress(Record.actress)}
             className={`px-3 py-1 rounded-md ${
               selectedActress === Record.actress
                 ? "bg-blue-500 text-white"
@@ -317,7 +330,6 @@ export default function MoviesPage() {
         ))}
       </div>
 
-      {/* 电影列表网格布局 */}
       <div className="grid grid-cols-4 gap-4" id="movie_list">
         {sortedMovies.map((movie) => (
           <div
@@ -327,10 +339,10 @@ export default function MoviesPage() {
             }
             id = {sortedMovies.indexOf(movie).toString()}
           >
-            {movie.coverUrl ? (
+            {movie.localCoverUrl ? (
               <div className="aspect-auto w-full">
                 <img
-                  src={movie.coverUrl}
+                  src={movie.localCoverUrl}
                   alt={movie.title || movie.filename}
                   onError={(e) => {
                     console.error("图片加载失败:", e.currentTarget.src);
@@ -361,7 +373,6 @@ export default function MoviesPage() {
         ))}
       </div>
 
-      {/* Video Player Modal */}
       {selectedMovie && (
         <div
           className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"

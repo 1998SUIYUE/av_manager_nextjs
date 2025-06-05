@@ -261,7 +261,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
       }
     }
   });
-
+  
   // 打印重复文件信息
   if (duplicateMovies.length > 0) {
     console.log("检测到重复文件:");
@@ -276,6 +276,9 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
   } else {
     console.log("没有检测到重复文件");
   }
+  console.log(
+    "项目路径: https://localhost:3000"
+  );
   return processedMovies;
 }
 

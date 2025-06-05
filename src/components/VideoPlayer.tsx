@@ -218,7 +218,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<VideoError | null>(null);
-  const [showTechInfo, setShowTechInfo] = useState(true);
+  const [showTechInfo, setShowTechInfo] = useState(false);
   const [techInfo, setTechInfo] = useState<VideoTechInfo>({
     resolution: "--",
     frameRate: "--",
