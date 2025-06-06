@@ -230,6 +230,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     hardwareAcceleration: false,
     renderMode: "--"
   });
+  const [isMobile, setIsMobile] = useState(false);
   
   // 添加显示/隐藏技术信息的切换函数
   const toggleTechInfo = useCallback(() => {
@@ -570,6 +571,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     );
   }, [showTechInfo, techInfo]);
 
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <div className="relative w-full group">
       <video
@@ -587,7 +595,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       >
         您的浏览器不支持视频标签。
       </video>
-      {filename && (
+      {filename && !isMobile && (
         <div
           className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm max-w-[80%] truncate 
                      opacity-0 group-hover:opacity-100 transition-opacity duration-300"

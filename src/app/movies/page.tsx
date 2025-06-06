@@ -35,6 +35,27 @@ export default function MoviesPage() {
 
   const [forwardSeconds, setForwardSeconds] = useState(10);
 
+  // 判断是否为手机屏幕
+  const [isMobile, setIsMobile] = useState(false);
+  // 手机端演员筛选折叠控制
+  const [isActressListOpen, setIsActressListOpen] = useState(true);
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (window.innerWidth <= 768) {
+      setIsActressListOpen(false);
+    } else {
+      setIsActressListOpen(true);
+    }
+  }, [isMobile]);
+
   const getLocalCoverUrl = async (remoteUrl: string | undefined) => {
     if (!remoteUrl) return "/placeholder-image.svg";
     
@@ -140,6 +161,10 @@ export default function MoviesPage() {
   };
 
   const handleMovieClick = (movie: MovieFile) => {
+    // 失去当前聚焦，防止弹出键盘
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     console.log("选中的电影:", {
       filename: movie.filename,
       path: movie.path,
@@ -286,12 +311,14 @@ export default function MoviesPage() {
         </div>
 
         <button
+          type="button"
           onClick={handleClearDirectory}
           className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors mx-4"
         >
           更改电影目录
         </button>
         <button
+          type="button"
           onClick={handleRandomMovieClick}
           className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors mx-4"
         >
@@ -303,44 +330,67 @@ export default function MoviesPage() {
         </div>
       </div>
 
-      <div className=" flex flex-wrap gap-2  bg-black pb-4">
+      {/* 手机端折叠演员筛选，桌面端始终展开 */}
+      {isMobile && (
         <button
+          type="button"
+          onClick={() => setIsActressListOpen((v) => !v)}
+          style={{ width: '100%', background: '#222', color: '#fff', padding: 8, border: 'none', borderRadius: 4, marginBottom: 4, fontSize: 16 }}
+        >
+          {isActressListOpen ? '折叠演员筛选' : '展开演员筛选'}
+        </button>
+      )}
+      <div
+        className="flex flex-wrap gap-2 bg-black pb-4"
+        style={isMobile
+          ? { display: isActressListOpen ? 'flex' : 'none', flexWrap: 'wrap', gap: 8, background: '#000', paddingBottom: 16 }
+          : { display: 'flex', flexWrap: 'wrap', gap: 8, background: '#000', paddingBottom: 16 }}
+      >
+        <button
+          type="button"
           key="all"
           onClick={() => setSelectedActress(null)}
-          className={`px-3 py-1 rounded-md ${
-            selectedActress === null
-              ? "bg-blue-500 text-white"
-              : "bg-gray-200 text-black"
-          }`}
+          style={selectedActress === null
+            ? { padding: '4px 12px', borderRadius: 6, background: '#3b82f6', color: '#fff', border: 'none' }
+            : { padding: '4px 12px', borderRadius: 6, background: '#e5e7eb', color: '#111', border: 'none' }}
         >
           全部
         </button>
         {actresses.map((Record) => (
           <button
+            type="button"
             key={Record.actress}
             onClick={() => setSelectedActress(Record.actress)}
-            className={`px-3 py-1 rounded-md ${
-              selectedActress === Record.actress
-                ? "bg-blue-500 text-white"
-                : "bg-gray-200 text-black"
-            }`}
+            style={selectedActress === Record.actress
+              ? { padding: '4px 12px', borderRadius: 6, background: '#3b82f6', color: '#fff', border: 'none' }
+              : { padding: '4px 12px', borderRadius: 6, background: '#e5e7eb', color: '#111', border: 'none' }}
           >
             {Record.actress}({Record.count})
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-4 gap-4" id="movie_list">
+      <div
+        className="grid grid-cols-4 gap-4"
+        id="movie_list"
+        style={isMobile
+          ? { display: 'grid', gridTemplateColumns: '1fr', gap: '1px', padding: 0, background: '#000' }
+          : undefined}
+      >
         {sortedMovies.map((movie) => (
           <div
             key={movie.filename}
-            className="cursor-pointer bg-gray-800 shadow-md rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
-            onClick={() => handleMovieClick(movie)
-            }
-            id = {sortedMovies.indexOf(movie).toString()}
+            className="cursor-pointer"
+            onClick={() => handleMovieClick(movie)}
+            id={sortedMovies.indexOf(movie).toString()}
+            style={isMobile
+              ? { background: '#111', borderRadius: 0, overflow: 'hidden', boxShadow: 'none', cursor: 'pointer', margin: 0, padding: 0 }
+              : { background: '#2d3748', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', cursor: 'pointer' }}
           >
             {movie.localCoverUrl ? (
-              <div className="aspect-auto w-full">
+              <div style={isMobile
+                ? { width: '100%', background: '#111', aspectRatio: '16/9', margin: 0, padding: 0 }
+                : { width: '100%', aspectRatio: '16/9', background: '#111' }}>
                 <img
                   src={movie.localCoverUrl}
                   alt={movie.title || movie.filename}
@@ -348,27 +398,31 @@ export default function MoviesPage() {
                     console.error("图片加载失败:", e.currentTarget.src);
                     e.currentTarget.src = "/placeholder-image.svg";
                   }}
-                  className="w-full h-auto object-contain"
+                  style={isMobile
+                    ? { width: '100%', height: 'auto', objectFit: 'cover', display: 'block', margin: 0, padding: 0, borderRadius: 0 }
+                    : { width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
                 />
               </div>
             ) : (
               <img
                 src="/placeholder-image.svg"
                 alt="无封面"
-                className="w-full h-auto object-contain"
+                style={isMobile
+                  ? { width: '100%', height: 'auto', objectFit: 'cover', display: 'block', margin: 0, padding: 0, borderRadius: 0 }
+                  : { width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
               />
             )}
-            <div className="p-4">
-              <h2 className="text-sm font-semibold truncate mb-2 text-gray-100">
-                {movie.code}{movie.displayTitle || movie.filename}
-              </h2>
-              {movie.actress && (
-                <p className="text-xs truncate text-gray-300">{movie.actress}</p>
-              )}
-              <p className="text-xs text-gray-400 mt-1">
-                {formatFileSize(movie.size)}
-              </p>
-            </div>
+            {!isMobile && (
+              <div style={{ padding: 16 }}>
+                <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#f3f4f6', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {movie.code}{movie.displayTitle || movie.filename}
+                </h2>
+                {movie.actress && (
+                  <p style={{ fontSize: 12, color: '#d1d5db', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{movie.actress}</p>
+                )}
+                <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{formatFileSize(movie.size)}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -383,6 +437,7 @@ export default function MoviesPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <button
+              type="button"
               className="absolute -top-10 right-0 text-white text-2xl z-60"
               onClick={closeVideoPlayer}
             >
