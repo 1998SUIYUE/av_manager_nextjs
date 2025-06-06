@@ -5,11 +5,6 @@ import { useState, useEffect, useMemo } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import axios from "axios";
 
-// 添加图片加载完成处理
-const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
-  event.currentTarget.classList.add('loaded');
-};
-
 interface MovieFile {
   filename: string;
   path: string;
@@ -37,21 +32,8 @@ export default function MoviesPage() {
   const [sortMode, setSortMode] = useState<"time" | "size">("time");
   const [selectedActress, setSelectedActress] = useState<string | null>(null);
   const [selectedMovie, setSelectedMovie] = useState<MovieFile | null>(null);
-  const [forwardSeconds, setForwardSeconds] = useState(10);
-  const [isMobile, setIsMobile] = useState(false);
 
-  useEffect(() => {
-    const checkIsMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkIsMobile);
-    };
-  }, []);
+  const [forwardSeconds, setForwardSeconds] = useState(10);
 
   const getLocalCoverUrl = async (remoteUrl: string | undefined) => {
     if (!remoteUrl) return "/placeholder-image.svg";
@@ -172,7 +154,7 @@ export default function MoviesPage() {
   };
 
   const ForwardSecondsSelector = () => (
-    <div className="flex flex-wrap items-center gap-2 mb-2">
+    <div className="flex items-center space-x-2 mb-2">
       <span className="text-white">快进秒数:</span>
       {[10, 30, 60, 120].map((seconds) => (
         <button
@@ -203,11 +185,11 @@ export default function MoviesPage() {
   };
 
   const SortModeToggle = () => (
-    <div className="flex items-center mb-2">
-      <span className="text-white mr-2 text-sm md:text-base">排序:</span>
+    <div className="flex items-center space-x-2 mb-2">
+      <span className="text-white mr-2">排序方式:</span>
       <button
         onClick={toggleSortMode}
-        className="px-2 md:px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm md:text-base"
+        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
       >
         {sortMode === "time" ? "时间" : "大小"}
       </button>
@@ -215,10 +197,11 @@ export default function MoviesPage() {
   );
 
   const TimeOrderToggle = () => (
-    <div className="flex items-center mb-2">
+    <div className="flex items-center space-x-2 mb-2">
+      <span className="text-white mr-2">时间排序:</span>
       <button
         onClick={toggleTimeOrder}
-        className="px-2 md:px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition-colors text-sm md:text-base"
+        className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
       >
         {timeOrder === "newest" ? "最新" : "最旧"}
       </button>
@@ -226,16 +209,16 @@ export default function MoviesPage() {
   );
 
   const SizeOrderToggle = () => (
-    <div className="flex items-center mb-2">
+    <div className="flex items-center space-x-2 mb-2">
+      <span className="text-white mr-2">大小排序:</span>
       <button
         onClick={toggleSizeOrder}
-        className="px-2 md:px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors text-sm md:text-base"
+        className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
       >
         {sizeOrder === "largest" ? "最大" : "最小"}
       </button>
     </div>
   );
-  
   const handleRandomMovieClick = () => {
     if (movies.length > 0) {
       const randomIndex = Math.floor(Math.random() * movies.length);
@@ -243,7 +226,6 @@ export default function MoviesPage() {
       handleMovieClick(randomMovie);
     }
   };
-  
   const handleClearDirectory = async () => {
     try {
       const response = await fetch("/api/movies", {
@@ -259,20 +241,18 @@ export default function MoviesPage() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-10 text-lg">加载中...</div>;
+    return <div className="text-center py-10">加载中...</div>;
   }
 
   if (error) {
-    return <div className="text-center text-red-500 py-10 text-lg">错误: {error}</div>;
+    return <div className="text-center text-red-500 py-10">错误: {error}</div>;
   }
 
-  const gridCols = isMobile ? "grid-cols-2" : "grid-cols-4";
-  
   return (
-    <div className="container mx-auto p-2 md:p-0 max-w-full md:max-w-[90vw]">
-      <div className="flex flex-col md:flex-row md:items-center justify-between bg-black mb-4 p-2 rounded-lg">
-        <div className="w-full md:w-auto mb-2 md:mb-0">
-          <div className="relative">
+    <div className="container mx-auto p-0 max-w-[90vw]">
+      <div className=" flex items-center justify-between  bg-black my-2">
+        <div className="flex items-center space-x-2">
+          <div className="flex-grow relative">
             <input
               type="text"
               placeholder="搜索电影..."
@@ -305,31 +285,29 @@ export default function MoviesPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            onClick={handleClearDirectory}
-            className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm"
-          >
-            更改目录
-          </button>
-          <button
-            onClick={handleRandomMovieClick}
-            className="px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm"
-          >
-            随机选择
-          </button>
-          <div className="flex items-center gap-2">
-            <SortModeToggle />
-            {sortMode === "time" ? <TimeOrderToggle /> : <SizeOrderToggle />}
-          </div>
+        <button
+          onClick={handleClearDirectory}
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors mx-4"
+        >
+          更改电影目录
+        </button>
+        <button
+          onClick={handleRandomMovieClick}
+          className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors mx-4"
+        >
+          随机选择电影
+        </button>
+        <div className="flex items-center space-x-2">
+          <SortModeToggle />
+          {sortMode === "time" ? <TimeOrderToggle /> : <SizeOrderToggle />}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 bg-black p-2 rounded-lg mb-4 overflow-x-auto">
+      <div className=" flex flex-wrap gap-2  bg-black pb-4">
         <button
           key="all"
           onClick={() => setSelectedActress(null)}
-          className={`px-3 py-1 rounded-md text-sm ${
+          className={`px-3 py-1 rounded-md ${
             selectedActress === null
               ? "bg-blue-500 text-white"
               : "bg-gray-200 text-black"
@@ -341,7 +319,7 @@ export default function MoviesPage() {
           <button
             key={Record.actress}
             onClick={() => setSelectedActress(Record.actress)}
-            className={`px-3 py-1 rounded-md text-sm whitespace-nowrap ${
+            className={`px-3 py-1 rounded-md ${
               selectedActress === Record.actress
                 ? "bg-blue-500 text-white"
                 : "bg-gray-200 text-black"
@@ -352,16 +330,17 @@ export default function MoviesPage() {
         ))}
       </div>
 
-      <div className={`grid ${gridCols} gap-3 md:gap-4`} id="movie_list">
+      <div className="grid grid-cols-4 gap-4" id="movie_list">
         {sortedMovies.map((movie) => (
           <div
             key={movie.filename}
             className="cursor-pointer bg-gray-800 shadow-md rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
-            onClick={() => handleMovieClick(movie)}
-            id={sortedMovies.indexOf(movie).toString()}
+            onClick={() => handleMovieClick(movie)
+            }
+            id = {sortedMovies.indexOf(movie).toString()}
           >
             {movie.localCoverUrl ? (
-              <div className="aspect-[3/4] w-full">
+              <div className="aspect-auto w-full">
                 <img
                   src={movie.localCoverUrl}
                   alt={movie.title || movie.filename}
@@ -369,30 +348,24 @@ export default function MoviesPage() {
                     console.error("图片加载失败:", e.currentTarget.src);
                     e.currentTarget.src = "/placeholder-image.svg";
                   }}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  onLoad={handleImageLoad}
+                  className="w-full h-auto object-contain"
                 />
               </div>
             ) : (
-              <div className="aspect-[3/4] w-full flex items-center justify-center bg-gray-700">
-                <img
-                  src="/placeholder-image.svg"
-                  alt="无封面"
-                  className="w-1/2 h-auto object-contain opacity-50"
-                  onLoad={handleImageLoad}
-                />
-              </div>
+              <img
+                src="/placeholder-image.svg"
+                alt="无封面"
+                className="w-full h-auto object-contain"
+              />
             )}
-            <div className="p-3">
-              <h2 className="text-sm md:text-base font-semibold truncate mb-1 text-gray-100">
-                {movie.code && <span className="text-yellow-400 mr-1">{movie.code}</span>}
-                {movie.displayTitle || movie.filename}
+            <div className="p-4">
+              <h2 className="text-sm font-semibold truncate mb-2 text-gray-100">
+                {movie.code}{movie.displayTitle || movie.filename}
               </h2>
               {movie.actress && (
-                <p className="text-xs md:text-sm truncate text-gray-300 mb-1">{movie.actress}</p>
+                <p className="text-xs truncate text-gray-300">{movie.actress}</p>
               )}
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 mt-1">
                 {formatFileSize(movie.size)}
               </p>
             </div>
@@ -402,45 +375,43 @@ export default function MoviesPage() {
 
       {selectedMovie && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-1 md:p-4"
+          className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
           onClick={closeVideoPlayer}
         >
           <div
-            className="w-full h-full relative overflow-hidden"
+            className="max-w-8xl w-full relative overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="absolute top-2 right-2 text-white text-xl z-60 bg-red-600 w-8 h-8 rounded-full flex items-center justify-center"
+              className="absolute -top-10 right-0 text-white text-2xl z-60"
               onClick={closeVideoPlayer}
             >
               ✕
             </button>
 
-            <div className="mt-10">
-              <ForwardSecondsSelector />
-              <VideoPlayer
-                key={selectedMovie.path}
-                filepath={selectedMovie.path}
-                src={`/api/video/play?path=${encodeURIComponent(
-                  selectedMovie.path.replace(/\\/g, "/")
-                )}`}
-                className="w-full h-[90vh] object-contain"
-                muted={false}
-                filename={selectedMovie.filename}
-                forwardSeconds={forwardSeconds}
-                onLoadStart={() => {
-                  console.log("开始加载视频:", {
-                    filename: selectedMovie.filename,
-                    path: selectedMovie.path,
-                  });
-                }}
-                onCanPlay={() => {
-                  console.log("视频可以播放:", {
-                    filename: selectedMovie.filename,
-                  });
-                }}
-              />
-            </div>
+            <ForwardSecondsSelector />
+            <VideoPlayer
+              key={selectedMovie.path}
+              filepath={selectedMovie.path}
+              src={`/api/video/play?path=${encodeURIComponent(
+                selectedMovie.path.replace(/\\/g, "/")
+              )}`}
+              className="w-full h-[90vh] object-contain"
+              muted={false}
+              filename={selectedMovie.filename}
+              forwardSeconds={forwardSeconds}
+              onLoadStart={() => {
+                console.log("开始加载视频:", {
+                  filename: selectedMovie.filename,
+                  path: selectedMovie.path,
+                });
+              }}
+              onCanPlay={() => {
+                console.log("视频可以播放:", {
+                  filename: selectedMovie.filename,
+                });
+              }}
+            />
           </div>
         </div>
       )}
