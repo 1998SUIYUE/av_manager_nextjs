@@ -1,130 +1,162 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-interface MovieMetadata {
-  code: string;
-  coverUrl: string | null;
-  title: string | null;
-  actress: string | null;
-  lastUpdated: number;
+// 定义电影元数据接口，表示缓存中存储的每条电影信息结构
+export interface MovieMetadata {
+  code: string; // 电影番号 (例如: 'ABC-123')
+  coverUrl: string | null; // 封面图片URL
+  title: string | null; // 电影标题
+  actress: string | null; // 女优名字
+  lastUpdated: number; // 最后一次更新时间戳 (毫秒)
 }
 
+// 缓存文件在项目根目录的绝对路径
 const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
 
-let _cache: MovieMetadata[] | null = null; // 添加内存缓存变量
-let _cacheFileLastModified: number | null = null; // 添加缓存文件最后修改时间戳
-let _lastStatCheckTime: number | null = null; // 记录上次检查文件stats的时间
-const STAT_CHECK_INTERVAL_MS = 1000; // 每1秒才重新检查一次文件stats
+// 内存中的电影元数据缓存，初始为 null (未加载状态)
+let _cache: MovieMetadata[] | null = null; 
 
-async function readCache(): Promise<MovieMetadata[]> {
-  // 如果内存缓存已加载且未到检查时间间隔，直接返回内存缓存
-  if (_cache !== null && _lastStatCheckTime !== null && 
-      (Date.now() - _lastStatCheckTime) < STAT_CHECK_INTERVAL_MS) {
-    // console.log('[readCache] 从内存缓存中快速读取 (在间隔内)');
-    return _cache;
-  }
-
-  try {
-    const stats = await fs.stat(CACHE_FILE_PATH); 
-    _lastStatCheckTime = Date.now(); // 更新检查时间
-
-    // 如果缓存未加载或文件被外部修改，则重新加载
-    if (_cache === null || stats.mtimeMs > (_cacheFileLastModified || 0)) {
-      // console.log('[readCache] 检测到外部更新或首次加载，重新从文件读取');
-      const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
-      if (!cacheContent || cacheContent.trim() === '') {
-        _cache = [];
-      } else {
-        _cache = JSON.parse(cacheContent);
-      }
-      _cacheFileLastModified = stats.mtimeMs; // 更新时间戳
-    } else {
-      // console.log('[readCache] 从内存缓存中读取');
-    }
-  } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      console.log('[readCache] 缓存文件不存在，初始化为空缓存');
-      _cache = [];
-      _cacheFileLastModified = Date.now(); // 设置一个时间戳，表示文件不存在但缓存已初始化
-    } else {
-      console.error('Error accessing movie metadata cache file:', error);
-      _cache = []; // 其他读取错误，清空缓存
-      _cacheFileLastModified = null; // 无效时间戳
-    }
-  }
-  return _cache!; // 此时_cache保证为 MovieMetadata[]，使用非空断言
+// 日志时间戳工具函数
+function logWithTimestamp(...args: unknown[]) {
+  const now = new Date();
+  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
+  console.log(`[${ts}]`, ...(args as unknown[]));
+}
+function warnWithTimestamp(...args: unknown[]) {
+  const now = new Date();
+  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
+  console.warn(`[${ts}]`, ...(args as unknown[]));
+}
+function errorWithTimestamp(...args: unknown[]) {
+  const now = new Date();
+  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
+  console.error(`[${ts}]`, ...(args as unknown[]));
 }
 
-async function writeCache(cache: MovieMetadata[]) {
-  // 写入前校验数据有效性，避免写入空数组或无效数据
-  if (!Array.isArray(cache) || cache.length === 0) {
-    console.warn('[writeCache] 拒绝写入空缓存，保留原有内容');
-    return;
-  }
-  const tmpFile = CACHE_FILE_PATH + '.tmp';
-  try {
-    await fs.writeFile(tmpFile, JSON.stringify(cache, null, 2), 'utf-8');
-    await fs.rename(tmpFile, CACHE_FILE_PATH);
-    // 成功写入后，立即更新内存缓存和时间戳
-    _cache = cache; 
-    const stats = await fs.stat(CACHE_FILE_PATH);
-    _cacheFileLastModified = stats.mtimeMs;
-    _lastStatCheckTime = Date.now(); // 更新检查时间
-  } catch (err) {
-    console.error('[writeCache] 写入缓存失败，保留原有内容:', err);
-    // 写入失败时不覆盖原有缓存
-    try { await fs.unlink(tmpFile); } catch (_) {console.log('删除临时文件失败',_);}
-  }
-}
-
+/**
+ * 从缓存中获取指定电影番号的元数据。
+ * 这是前端请求电影元数据时，后端首先会调用的函数。
+ * @param code 电影番号。
+ * @returns 对应的电影元数据，如果未找到则返回 null。
+ */
 export async function getCachedMovieMetadata(code: string): Promise<MovieMetadata | null> {
-  const cache = await readCache();
-  const cachedMetadata = cache.find(item => item.code === code);
-
-  if (cachedMetadata) {
-    return cachedMetadata;
+  logWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存`);
+  // 1. 首先尝试从内存缓存中查找
+  const cache = await readCache(); // 内部会处理文件读取
+  const found = cache.find(m => m.code === code);
+  if (found) {
+    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在内存缓存中找到`);
+    return found;
   }
+  logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
   return null;
 }
 
-export async function updateMovieMetadataCache(
-  code: string, 
-  coverUrl: string | null, 
-  title: string | null,
-  actress: string | null
-) {
-  try {
-    let cache: MovieMetadata[] = await readCache();
+/**
+ * 更新指定电影番号的元数据到缓存和磁盘文件。
+ * 当从外部成功获取到电影元数据后，会调用此函数进行缓存更新。
+ * @param code 电影番号。
+ * @param coverUrl 封面图片URL。
+ * @param title 电影标题。
+ * @param actress 女优名字。
+ */
+export async function updateMovieMetadataCache(code: string, coverUrl: string | null, title: string | null, actress: string | null) {
+  logWithTimestamp(`[updateMovieMetadataCache] 更新番号 ${code} 的缓存`);
+  // 1. 读取当前缓存 (会从文件或内存获取最新数据)
+  const cache = await readCache();
+  const now = Date.now();
 
-    const existingIndex = cache.findIndex(item => item.code === code);
-    const newEntry: MovieMetadata = {
-      code,
-      coverUrl,
-      title,
-      actress,
-      lastUpdated: Date.now()
+  // 2. 查找并更新现有条目或添加新条目
+  const existingIndex = cache.findIndex(m => m.code === code);
+  if (existingIndex !== -1) {
+    // 如果找到现有条目，则更新其信息
+    cache[existingIndex] = {
+      code, coverUrl, title, actress, lastUpdated: now
     };
+    logWithTimestamp(`[updateMovieMetadataCache] 更新现有缓存条目: ${code}`);
+  } else {
+    // 如果是新条目，则添加到缓存列表的开头 (最近更新的在前)
+    cache.unshift({
+      code, coverUrl, title, actress, lastUpdated: now
+    });
+    logWithTimestamp(`[updateMovieMetadataCache] 添加新缓存条目: ${code}`);
+  }
 
-    if (existingIndex !== -1) {
-      console.log(`[updateMovieMetadataCache] 更新缓存 - 番号: ${code} 封面:${coverUrl} 番名:${title} 女优:${actress}`);
-      cache[existingIndex] = newEntry;
+  // 3. 将更新后的缓存写入磁盘文件
+  await writeCache(cache);
+  logWithTimestamp(`[updateMovieMetadataCache] 番号 ${code} 缓存更新并写入磁盘完成`);
+}
+
+/**
+ * 从磁盘读取电影元数据缓存文件，并维护内存缓存。
+ * 此函数现在仅在内存缓存为空时才从文件读取。
+ * @returns 电影元数据数组。
+ */
+async function readCache(): Promise<MovieMetadata[]> {
+  // 如果内存缓存已经存在，直接返回内存中的数据
+  if (_cache !== null) {
+    logWithTimestamp('[readCache] 从内存缓存中读取');
+    return _cache; // 此时_cache保证为 MovieMetadata[]
+  }
+
+  // 如果内存缓存为空，则尝试从磁盘文件读取
+  logWithTimestamp('[readCache] 内存缓存为空，尝试从文件读取...');
+  try {
+    const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
+    if (!cacheContent || cacheContent.trim() === '') {
+      // 如果文件内容为空，则初始化一个空缓存
+      _cache = [];
+      logWithTimestamp('[readCache] 缓存文件内容为空，初始化为空缓存');
     } else {
-      console.log(`[updateMovieMetadataCache] 更新缓存 - 番号: ${code} 封面:${coverUrl} 番名:${title} 女优:${actress}`);
-      cache.push(newEntry);
+      // 解析 JSON 内容并更新内存缓存
+      _cache = JSON.parse(cacheContent);
+      logWithTimestamp('[readCache] 从文件加载并更新内存缓存');
     }
-
-    // 按 lastUpdated 降序排序
-    cache.sort((a, b) => b.lastUpdated - a.lastUpdated);
-
-    // 限制缓存大小（例如，最多保留 500 个条目）
-    const MAX_CACHE_SIZE = 500;
-    if (cache.length > MAX_CACHE_SIZE) {
-      cache = cache.slice(0, MAX_CACHE_SIZE);
+  } catch (error: unknown) {
+    // 捕获文件操作中可能发生的错误
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      // 如果文件不存在 (ENOENT 错误码)，则初始化一个空缓存
+      logWithTimestamp('[readCache] 缓存文件不存在，初始化为空缓存');
+      _cache = [];
+    } else {
+      // 处理其他读取错误，清空缓存并记录错误信息
+      errorWithTimestamp('Error accessing movie metadata cache file:', error);
+      _cache = []; // 其他读取错误，清空缓存
     }
+  }
+  return _cache!; // 返回内存缓存，由于逻辑保证，_cache 在此始终为 MovieMetadata[] 类型
+}
+
+/**
+ * 将电影元数据缓存写入磁盘文件。
+ * 此函数会进行原子性写入，确保数据完整性。
+ * @param cache 要写入的电影元数据数组。
+ */
+async function writeCache(cache: MovieMetadata[]) {
+  logWithTimestamp('[writeCache] 开始写入缓存到磁盘');
+  // 写入前校验数据有效性，避免写入空数组或无效数据，防止覆盖掉有效数据
+  if (!Array.isArray(cache) || cache.length === 0) {
+    warnWithTimestamp('[writeCache] 拒绝写入空缓存或无效数据，保留原有内容');
+    return;
+  }
+  
+  // 使用临时文件进行原子性写入，防止文件损坏
+  const tmpFile = CACHE_FILE_PATH + '.tmp';
+  const jsonString = JSON.stringify(cache, null, 2);
+  
+  try {
+    // 1. 将数据写入临时文件
+    logWithTimestamp(`[writeCache] 写入临时文件: ${tmpFile}`);
+    await fs.writeFile(tmpFile, jsonString, 'utf-8');
     
-    _cache = cache; // 更新内存缓存
-    await writeCache(cache);
+    // 2. 将临时文件重命名为正式文件 (原子操作)
+    logWithTimestamp(`[writeCache] 重命名临时文件到: ${CACHE_FILE_PATH}`);
+    await fs.rename(tmpFile, CACHE_FILE_PATH);
+    
+    // 3. 更新内存缓存
+    _cache = cache; // 将新写入的缓存内容同步到内存
+    logWithTimestamp('[writeCache] 缓存成功写入磁盘并同步内存');
   } catch (error) {
-    console.log('Error updating movie metadata cache:', error);
+    errorWithTimestamp('[writeCache] 写入缓存文件失败:', error); // 记录写入失败的错误
   }
 }
