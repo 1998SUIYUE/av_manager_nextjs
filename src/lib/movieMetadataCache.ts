@@ -18,9 +18,7 @@ let _cache: MovieMetadata[] | null = null;
 
 // 日志时间戳工具函数
 function logWithTimestamp(...args: unknown[]) {
-  const now = new Date();
-  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
-  console.log(`[${ts}]`, ...(args as unknown[]));
+  console.log(`[${new Date().toISOString().replace('T', ' ').replace('Z', '')}]`, ...(args as unknown[]));
 }
 function warnWithTimestamp(...args: unknown[]) {
   const now = new Date();
