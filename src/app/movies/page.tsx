@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
-import { errorWithTimestamp } from "@/utils/logger";
+import { errorWithTimestamp, logWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer"; // 导入 VideoPlayer 组件
 
 interface MovieData {
@@ -154,6 +154,42 @@ const MoviesPage = () => {
     setShowVideoPlayer(false);
   }, []);
 
+  // 处理电影删除操作
+  const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
+    if (!filePath) {
+      alert("无法删除电影: 文件路径未提供。");
+      return;
+    }
+
+    if (!confirm(`确定要删除电影 "${filename || filePath}" 吗？此操作不可撤销！`)) {
+      return;
+    }
+
+    try {
+      logWithTimestamp(`[MoviesPage] 尝试删除电影: ${filePath}`);
+      const response = await fetch("/api/movies/delete-file", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ filePath: filePath }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "删除文件失败");
+      }
+
+      logWithTimestamp(`[MoviesPage] 电影删除成功: ${filePath}`);
+      alert(`电影 "${filename || filePath}" 已成功删除。`);
+      setShowVideoPlayer(false); // 关闭视频播放器
+      fetchMovies(0); // 重新加载电影列表以反映删除
+    } catch (error) {
+      errorWithTimestamp(`[MoviesPage] 删除电影时发生错误: ${filePath}`, error);
+      alert(error instanceof Error ? error.message : "删除电影时发生错误");
+    }
+  }, [fetchMovies]);
+
   // 根据排序模式对电影进行排序
   const sortedAndFilteredMovies = useMemo(() => {
     let currentMovies = [...movies];
@@ -258,27 +294,27 @@ const MoviesPage = () => {
 
       {/* 视频播放器弹窗 */}
       {showVideoPlayer && selectedVideoPath && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
-          onClick={handleCloseVideoPlayer} // 点击背景关闭
-        >
-          <div 
-            className="relative w-full max-w-4xl h-auto aspect-video bg-gray-900 rounded-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()} // 阻止事件冒泡到背景
-          >
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-7xl h-full flex flex-col items-center justify-center">
             <button
               onClick={handleCloseVideoPlayer}
-              className="absolute top-2 right-2 text-white text-3xl font-bold z-50 p-2 rounded-full hover:bg-gray-700"
-              style={{ top: '10px', right: '10px' }}
+              className="absolute top-2 right-2 text-white text-3xl font-bold p-2 z-10"
+              style={{ top: '10px', right: '10px' }} // 内联样式
             >
               &times;
             </button>
-            <VideoPlayer 
-              src={`/api/video/stream?path=${btoa(selectedVideoPath)}`} 
-              autoPlay={true} 
-              controls={true} 
-              className="w-full h-full"
+            <VideoPlayer
+              src={`/api/video/stream?path=${btoa(selectedVideoPath)}`}
+              filepath={selectedVideoPath} // 传递完整路径用于打开文件位置或删除
+              filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
             />
+            <button
+              onClick={() => handleDeleteMovieClick(selectedVideoPath, movies.find(m => m.absolutePath === selectedVideoPath)?.filename)}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-lg mt-4 self-end"
+              style={{ zIndex: 10 }} // 确保按钮在视频上方
+            >
+              删除电影
+            </button>
           </div>
         </div>
       )}
