@@ -17,11 +17,15 @@ interface MovieCardProps {
     actress?: string | null;
   };
   formatFileSize: (bytes: number) => string;
+  onMovieClick: (absolutePath: string) => void;
 }
 
-const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize }) => {
+const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieClick }) => {
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105">
+    <div
+      className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer"
+      onClick={() => onMovieClick(movie.absolutePath)}
+    >
       <img
         src={movie.coverUrl || "/placeholder-image.svg"}
         alt={movie.displayTitle || movie.title || movie.filename}

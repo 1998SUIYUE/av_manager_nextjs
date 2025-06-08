@@ -180,6 +180,7 @@ interface VideoPlayerProps {
   onLoadStart?: () => void;
   onCanPlay?: () => void;
   onProgress?: (progress: { buffered: number; duration: number }) => void;
+  controls?: boolean;
 }
 
 // 扩展HTML视频元素的类型，以处理非标准属性
@@ -214,6 +215,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onLoadStart,
   onCanPlay,
   onProgress,
+  controls = true,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -585,7 +587,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         ref={videoRef}
         src={src}
         poster={poster}
-        controls
+        controls={controls}
         autoPlay={autoPlay}
         muted={muted}
         className="w-full max-h-[80vh] bg-black"

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
 import { errorWithTimestamp } from "@/utils/logger";
+import VideoPlayer from "@/components/VideoPlayer"; // 导入 VideoPlayer 组件
 
 interface MovieData {
   filename: string;
@@ -40,6 +41,10 @@ const MoviesPage = () => {
   const [totalMovies, setTotalMovies] = useState(0); // 总电影数量
 
   const bottomBoundaryRef = useRef<HTMLDivElement>(null); // 用于观察底部边界的引用
+
+  // 视频播放相关状态
+  const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
+  const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null); // 当前播放视频的路径
 
   useEffect(() => {
     if (loadingStartTime) {
@@ -79,7 +84,7 @@ const MoviesPage = () => {
         // 如果是搜索结果，直接替换电影列表
         setMovies(data.movies);
         setHasMore(false); // 搜索结果不分页，所以没有更多
-      } else {
+            } else {
         // 否则追加电影列表
         setMovies((prevMovies) => {
           const newMovies = data.movies.filter(
@@ -117,7 +122,7 @@ const MoviesPage = () => {
           setOffset((prevOffset) => prevOffset + limit);
         }
       },
-      { threshold: 1.0 } // 当目标元素完全可见时触发
+      { threshold: 0.5 } // 当目标元素完全可见时触发
     );
 
     if (bottomBoundaryRef.current) {
@@ -136,6 +141,18 @@ const MoviesPage = () => {
       fetchMovies(offset);
     }
   }, [offset, fetchMovies]);
+
+  // 处理电影卡片点击事件
+  const handleMovieClick = useCallback((absolutePath: string) => {
+    setSelectedVideoPath(absolutePath);
+    setShowVideoPlayer(true);
+  }, []);
+
+  // 关闭视频播放器
+  const handleCloseVideoPlayer = useCallback(() => {
+    setSelectedVideoPath(null);
+    setShowVideoPlayer(false);
+  }, []);
 
   // 根据排序模式对电影进行排序
   const sortedAndFilteredMovies = useMemo(() => {
@@ -168,8 +185,8 @@ const MoviesPage = () => {
       <div className="mb-8 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
         {/* 搜索输入框 */}
         <div className="relative w-full sm:w-1/2">
-          <input
-            type="text"
+            <input
+              type="text"
             placeholder="搜索电影 (标题, 番号, 女优, 文件名)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -177,15 +194,15 @@ const MoviesPage = () => {
           />
           {/* 一键清除按钮 */}
           {searchQuery && (
-            <button
+              <button
               onClick={() => setSearchQuery("")}
               className="absolute inset-y-0 right-0 flex items-center pr-3 text-white"
             >
               <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
+                </svg>
+              </button>
+            )}
         </div>
 
         {/* 排序模式切换 */}
@@ -216,7 +233,12 @@ const MoviesPage = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {sortedAndFilteredMovies.map((movie) => (
-          <MovieCard key={movie.absolutePath} movie={movie} formatFileSize={formatFileSize} />
+          <MovieCard 
+            key={movie.absolutePath} 
+            movie={movie} 
+            formatFileSize={formatFileSize}
+            onMovieClick={handleMovieClick} // 传递点击事件处理函数
+          />
         ))}
       </div>
 
@@ -232,6 +254,33 @@ const MoviesPage = () => {
 
       {!loading && movies.length === 0 && !error && (
         <p className="text-center text-xl mt-8">没有找到电影文件。</p>
+      )}
+
+      {/* 视频播放器弹窗 */}
+      {showVideoPlayer && selectedVideoPath && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+          onClick={handleCloseVideoPlayer} // 点击背景关闭
+        >
+          <div 
+            className="relative w-full max-w-4xl h-auto aspect-video bg-gray-900 rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()} // 阻止事件冒泡到背景
+          >
+            <button
+              onClick={handleCloseVideoPlayer}
+              className="absolute top-2 right-2 text-white text-3xl font-bold z-50 p-2 rounded-full hover:bg-gray-700"
+              style={{ top: '10px', right: '10px' }}
+            >
+              &times;
+            </button>
+            <VideoPlayer 
+              src={`/api/video/stream?path=${btoa(selectedVideoPath)}`} 
+              autoPlay={true} 
+              controls={true} 
+              className="w-full h-full"
+            />
+          </div>
+        </div>
       )}
     </div>
   );
