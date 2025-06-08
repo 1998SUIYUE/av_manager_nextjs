@@ -14,6 +14,9 @@ const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
 // 文件大小阈值：1GB = 1024 * 1024 * 1024 字节
 const FILE_SIZE_THRESHOLD = 1 * 1024 * 1024 * 1024;
 
+// 请求延迟时间（毫秒），避免频繁请求被网站屏蔽
+const REQUEST_DELAY_MS = 1000; // 例如，每5秒请求一次
+
 interface MovieFile {
   filename: string;
   path: string;
@@ -208,7 +211,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
   // const limitedMovies = sortedMovies.slice(0, 50);
   const limitedMovies = sortedMovies;
   // 使用信号量控制并发
-  const concurrencyLimit = 5;
+  const concurrencyLimit = 10;
   const semaphore = new Semaphore(concurrencyLimit);
 
   const processedMovies = await Promise.all(
@@ -219,6 +222,9 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
           let coverUrl = null;
           let title = null;
           let actress = null;
+
+          // 在请求之前增加延迟
+          await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
 
           // 如果有番号，尝试获取封面和标题（带重试和超时）
           if (movie.code) {
