@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@/utils/logger';
 
 // 定义电影元数据接口，表示缓存中存储的每条电影信息结构
 export interface MovieMetadata {
@@ -15,23 +16,6 @@ const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
 
 // 内存中的电影元数据缓存，初始为 null (未加载状态)
 let _cache: MovieMetadata[] | null = null; 
-
-// 日志时间戳工具函数
-function logWithTimestamp(...args: unknown[]) {
-  const now = new Date();
-  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
-  console.log(`[${ts}]`, ...(args as unknown[]));
-}
-function warnWithTimestamp(...args: unknown[]) {
-  const now = new Date();
-  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
-  console.warn(`[${ts}]`, ...(args as unknown[]));
-}
-function errorWithTimestamp(...args: unknown[]) {
-  const now = new Date();
-  const ts = now.toISOString().replace('T', ' ').replace('Z', '');
-  console.error(`[${ts}]`, ...(args as unknown[]));
-}
 
 /**
  * 从缓存中获取指定电影番号的元数据。

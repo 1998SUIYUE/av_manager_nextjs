@@ -7,6 +7,7 @@ import {
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
 import { writeFile, readFile } from "fs/promises";
+import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from "@/utils/logger";
 
 // 支持的视频文件扩展名列表
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
@@ -30,8 +31,8 @@ interface MovieFile {
   year?: string; // 电影年份
   modifiedAt: number; // 文件最后修改时间戳 (毫秒)
   code?: string; // 电影番号 (例如: 'ABC-123')
-  coverUrl?: string; // 封面图片URL (可能来自外部网站)
-  actress?: string; // 女优名字
+  coverUrl?: string | null; // 封面图片URL (可能来自外部网站)
+  actress?: string | null; // 女优名字
 }
 
 /**
@@ -87,7 +88,7 @@ async function fetchCoverUrl(code: string) {
   // 2. 如果缓存未命中，启动 Playwright 浏览器进行网页抓取
   let browser = null;
   try {
-    console.log(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
+    logWithTimestamp(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
 
     // 启动无头模式的 Chromium 浏览器
     browser = await chromium.launch({
@@ -106,7 +107,7 @@ async function fetchCoverUrl(code: string) {
 
     // 构造 JavDB 搜索 URL
     const url = `https://javdb.com/search?q=${code}&f=all/`;
-    console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
+    logWithTimestamp(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
       // 导航到搜索结果页，等待 DOM 内容加载完成
@@ -130,7 +131,7 @@ async function fetchCoverUrl(code: string) {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      console.log(
+      logWithTimestamp(
         `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
       );
 
@@ -154,9 +155,7 @@ async function fetchCoverUrl(code: string) {
         } else {
           // 如果默认选择器未找到封面，则使用备用封面URL
           coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-          console.log(
-            `[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`
-          );
+          errorWithTimestamp(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
         }
       }
 
@@ -177,7 +176,7 @@ async function fetchCoverUrl(code: string) {
           // );
           break; // 找到标题后跳出循环
         } else {
-          console.log(`[error] 选择器 ${selector} 未找到标题`);
+          errorWithTimestamp(`[error] 选择器 ${selector} 未找到标题`);
         }
       }
 
@@ -199,14 +198,12 @@ async function fetchCoverUrl(code: string) {
 
       // 如果成功获取到标题，则更新本地缓存
       if (title) {
-        console.log(
+        logWithTimestamp(
           `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
         await updateMovieMetadataCache(code, coverUrl, title, actress);
       } else {
-        console.log(
-          `[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
-        );
+        errorWithTimestamp(`[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`);
       }
 
       return {
@@ -215,11 +212,11 @@ async function fetchCoverUrl(code: string) {
         actress,
       };
     } catch (navigationError) {
-      console.error(`[fetchCoverUrl] 页面导航错误:`, navigationError);
+      errorWithTimestamp(`[fetchCoverUrl] 页面导航错误:`, navigationError);
       return { coverUrl: null, title: null, actress: null };
     }
   } catch (error) {
-    console.error(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
+    errorWithTimestamp(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
     if (browser) {
       await browser.close();
     }
@@ -265,7 +262,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
               title = result.title;
               actress = result.actress;
             } catch (error) {
-              console.error(`处理电影 ${movie.filename} 时发生错误:`, error);
+              errorWithTimestamp(`处理电影 ${movie.filename} 时发生错误:`, error);
             }
           }
 
@@ -299,15 +296,15 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
   
   // 打印重复文件信息
   if (duplicateMovies.length > 0) {
-    console.log("检测到重复文件:");
+    logWithTimestamp("检测到重复文件:");
     duplicateMovies.forEach((movie) => {
-      console.log(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
+      logWithTimestamp(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
     });
-    console.log(`总共检测到 ${duplicateMovies.length} 个重复文件`);
+    logWithTimestamp(`总共检测到 ${duplicateMovies.length} 个重复文件`);
   } else {
-    console.log("没有检测到重复文件");
+    logWithTimestamp("没有检测到重复文件");
   }
-  console.log(
+  logWithTimestamp(
     "项目路径: https://localhost:3000"
   );
   return processedMovies;
@@ -362,11 +359,11 @@ class Semaphore {
         if (next) {
           next(); // 执行请求
         } else {
-          console.warn("checkQueue: Retrieved null or undefined from queue");
+          warnWithTimestamp("checkQueue: Retrieved null or undefined from queue");
         }
       }
     } catch (error) {
-      console.error("checkQueue: Error occurred while processing queue", error);
+      errorWithTimestamp("checkQueue: Error occurred while processing queue", error);
     }
   }
 }
@@ -397,7 +394,7 @@ async function retryWithTimeout<T>(
         ),
       ]);
     } catch (error) {
-      console.warn(`第 ${attempt} 次尝试失败:`, error);
+      warnWithTimestamp(`第 ${attempt} 次尝试失败:`, error);
       lastError = error as Error;
 
       // 指数退避策略：每次重试增加等待时间，以避免连续失败
@@ -417,10 +414,10 @@ async function retryWithTimeout<T>(
  * @returns 一个 Promise，resolve 时携带一个 MovieFile 数组。
  */
 async function scanMovieDirectory(directoryPath: string) {
-  console.log(`[scanMovieDirectory] 开始扫描目录: ${directoryPath}`);
+  logWithTimestamp(`[scanMovieDirectory] 开始扫描目录: ${directoryPath}`);
   // 处理路径中的引号和反斜杠，确保路径格式正确
   const cleanPath = directoryPath.replace(/['"]/g, "").replace(/\\/g, "/");
-  console.log("[scanMovieDirectory] 清理后的路径:", cleanPath);
+  logWithTimestamp("[scanMovieDirectory] 清理后的路径:", cleanPath);
   const movieFiles: MovieFile[] = []; // 用于存储扫描到的电影文件信息
 
   /**
@@ -428,27 +425,27 @@ async function scanMovieDirectory(directoryPath: string) {
    * @param currentPath 当前要扫描的目录的绝对路径。
    */
   async function scanDirectory(currentPath: string) {
-    console.log(`[scanDirectory] 开始扫描子目录: ${currentPath}`);
+    logWithTimestamp(`[scanDirectory] 开始扫描子目录: ${currentPath}`);
 
     // 规范化当前路径，确保跨平台兼容性
     const normalizedPath = path.normalize(currentPath);
 
     try {
       // 读取当前目录的内容 (文件和子目录)
-      console.log(`[scanDirectory] 读取目录内容: ${normalizedPath}`);
+      logWithTimestamp(`[scanDirectory] 读取目录内容: ${normalizedPath}`);
       const files = await fs.promises.readdir(normalizedPath);
-      console.log(`[scanDirectory] 目录 ${normalizedPath} 中发现 ${files.length} 个条目`);
+      logWithTimestamp(`[scanDirectory] 目录 ${normalizedPath} 中发现 ${files.length} 个条目`);
 
       // 遍历目录中的每个条目
       for (const file of files) {
         const fullPath = path.join(normalizedPath, file);
-        console.log(`[scanDirectory] 处理文件/目录: ${fullPath}`);
+        logWithTimestamp(`[scanDirectory] 处理文件/目录: ${fullPath}`);
 
         try {
           // 获取文件或目录的统计信息 (例如：是否是目录，文件大小，修改时间等)
-          console.log(`[scanDirectory] 获取文件/目录 stat: ${fullPath}`);
+          logWithTimestamp(`[scanDirectory] 获取文件/目录 stat: ${fullPath}`);
           const stats = await fs.promises.stat(fullPath);
-          console.log(`[scanDirectory] 完成 stat: ${fullPath}, isDirectory: ${stats.isDirectory()}`);
+          logWithTimestamp(`[scanDirectory] 完成 stat: ${fullPath}, isDirectory: ${stats.isDirectory()}`);
 
           if (stats.isDirectory()) {
             // 如果是目录，则递归调用自身，继续扫描子目录
@@ -464,7 +461,7 @@ async function scanMovieDirectory(directoryPath: string) {
               VIDEO_EXTENSIONS.includes(ext) &&
               stats.size >= FILE_SIZE_THRESHOLD
             ) {
-              console.log(`[scanDirectory] 发现符合条件的视频文件: ${file}`);
+              logWithTimestamp(`[scanDirectory] 发现符合条件的视频文件: ${file}`);
               // 解析电影文件名以提取元数据
               const parsedInfo = parseMovieFilename(file);
               // 构建 MovieFile 对象
@@ -488,23 +485,23 @@ async function scanMovieDirectory(directoryPath: string) {
               // );
 
               movieFiles.push(movieFile); // 将电影文件添加到列表中
-              console.log(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
+              logWithTimestamp(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
             } else {
               // console.log(`[scanDirectory] 跳过文件 (不符合条件): ${file}`);
             }
           }
         } catch (fileError) {
-          console.error(`[scanDirectory] 处理文件 ${file} 时发生错误:`, fileError); // 记录处理单个文件时的错误
+          errorWithTimestamp(`[scanDirectory] 处理文件 ${file} 时发生错误:`, fileError); // 记录处理单个文件时的错误
         }
       }
     } catch (dirError) {
-      console.error(`[scanDirectory] 扫描目录 ${currentPath} 时发生错误:`, dirError); // 记录扫描目录本身的错误
+      errorWithTimestamp(`[scanDirectory] 扫描目录 ${currentPath} 时发生错误:`, dirError); // 记录扫描目录本身的错误
     }
   }
 
   // 开始递归扫描干净路径
   await scanDirectory(cleanPath);
-  console.log(`[scanMovieDirectory] 扫描完成，发现 ${movieFiles.length} 个电影文件`);
+  logWithTimestamp(`[scanMovieDirectory] 扫描完成，发现 ${movieFiles.length} 个电影文件`);
   // 对扫描到的电影文件进行进一步处理，例如获取封面等
   return processMovieFiles(movieFiles);
 }
@@ -517,15 +514,15 @@ const STORAGE_PATH = path.join(process.cwd(), "movie-directory.txt");
  * @returns 存储的目录路径字符串，如果文件不存在或读取失败则返回空字符串。
  */
 async function getStoredDirectory(): Promise<string> {
-  console.log(`[getStoredDirectory] 尝试从 ${STORAGE_PATH} 读取存储目录`);
+  logWithTimestamp(`[getStoredDirectory] 尝试从 ${STORAGE_PATH} 读取存储目录`);
   try {
     // 尝试读取文件内容
     const data = await readFile(STORAGE_PATH, "utf-8");
-    console.log(`[getStoredDirectory] 成功读取目录: ${data.trim()}`);
+    logWithTimestamp(`[getStoredDirectory] 成功读取目录: ${data.trim()}`);
     return data.trim(); // 返回清理后的目录路径
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
-    console.warn(`[getStoredDirectory] 未找到存储目录文件或读取失败:`, error); // 记录警告信息
+    warnWithTimestamp(`[getStoredDirectory] 未找到存储目录文件或读取失败:`, error);
     return ""; // 读取失败或文件不存在时返回空字符串
   }
 }
@@ -535,13 +532,13 @@ async function getStoredDirectory(): Promise<string> {
  * @param directory 要存储的目录路径。
  */
 async function storeDirectory(directory: string): Promise<void> {
-  console.log(`[storeDirectory] 尝试将目录 ${directory} 存储到 ${STORAGE_PATH}`);
+  logWithTimestamp(`[storeDirectory] 尝试将目录 ${directory} 存储到 ${STORAGE_PATH}`);
   try {
     // 写入文件内容
     await writeFile(STORAGE_PATH, directory, "utf-8");
-    console.log(`[storeDirectory] 成功存储目录: ${directory}`);
+    logWithTimestamp(`[storeDirectory] 成功存储目录: ${directory}`);
   } catch (error) {
-    console.error(`[storeDirectory] 存储目录失败:`, error); // 记录错误信息
+    errorWithTimestamp(`[storeDirectory] 存储目录失败:`, error);
   }
 }
 
@@ -550,26 +547,43 @@ async function storeDirectory(directory: string): Promise<void> {
  * 这是前端页面请求电影数据的入口。
  * @returns NextApiResponse 包含电影数据或错误信息。
  */
-export async function GET() {
-  console.log(`[GET] 接收到 GET 请求`);
+export async function GET(request: Request) {
+  logWithTimestamp(`[GET] 接收到 GET 请求`);
   try {
+    // 从请求的URL中解析offset和limit参数，用于分页
+    const { searchParams } = new URL(request.url);
+    const offset = parseInt(searchParams.get('offset') || '0', 10); // 默认从0开始
+    const limit = parseInt(searchParams.get('limit') || '50', 10);   // 默认每页50条
+
     // 获取存储的电影目录
     const movieDirectory = await getStoredDirectory();
     
     if (!movieDirectory) {
-      console.warn(`[GET] 未设置电影目录，返回 400 错误`);
+      warnWithTimestamp(`[GET] 未设置电影目录，返回 400 错误`);
       return NextResponse.json({ error: "No directory set" }, { status: 400 });
     }
     // 清理目录路径
     const cleanPath = movieDirectory.replace(/['"]/g, "").replace(/\\/g, "/");
-    console.log(`[GET] 开始扫描电影目录: ${cleanPath}`);
-    // 扫描电影目录并获取处理后的电影数据
-    const movies = await scanMovieDirectory(cleanPath);
-    console.log(`[GET] 完成电影扫描，返回 ${movies.length} 条电影数据`);
-    // 将电影数据作为 JSON 响应返回
-    return NextResponse.json(await Promise.all(movies));
+    logWithTimestamp(`[GET] 开始扫描电影目录: ${cleanPath}`);
+    // 扫描电影目录并获取所有原始的电影数据（不处理元数据）
+    const allMovieFiles = await scanMovieDirectory(cleanPath);
+    logWithTimestamp(`[GET] 完成原始电影扫描，发现 ${allMovieFiles.length} 个文件`);
+    
+    // 根据offset和limit对电影文件进行切片，获取当前页面的电影数据
+    const paginatedMovieFiles = allMovieFiles.slice(offset, offset + limit);
+    logWithTimestamp(`[GET] 分页获取 ${paginatedMovieFiles.length} 条电影数据 (offset: ${offset}, limit: ${limit})`);
+
+    // 对当前页面的电影数据进行元数据处理（获取封面等）
+    const processedMovies = await processMovieFiles(paginatedMovieFiles);
+    logWithTimestamp(`[GET] 完成当前页面电影数据处理，返回 ${processedMovies.length} 条电影数据`);
+
+    // 将处理后的电影数据和总数作为 JSON 响应返回
+    return NextResponse.json({
+      movies: processedMovies,
+      total: allMovieFiles.length,
+    });
   } catch (error) {
-    console.error("[GET] Error scanning movies:", error); // 记录整体扫描过程中的错误
+    errorWithTimestamp("[GET] Error scanning movies:", error);
     return NextResponse.json(
       { error: "getFailed to scan movies" },
       { status: 500 }
@@ -582,21 +596,21 @@ export async function GET() {
  * @returns NextApiResponse 包含成功或错误信息。
  */
 export async function PUT() {
-  console.log(`[PUT] 接收到 PUT 请求`);
+  logWithTimestamp(`[PUT] 接收到 PUT 请求`);
   try {
     // 获取当前存储的目录
     const directory = await getStoredDirectory();
     if (directory !== "") {
-      console.warn(`[PUT] 目录已设置，返回 200 状态`);
+      warnWithTimestamp(`[PUT] 目录已设置，返回 200 状态`);
       return NextResponse.json(
         { error: "Directory already set" },
         { status: 200 }
       );
     }
-    console.log(`[PUT] 目录未设置，返回 500 状态 (待实现具体设置逻辑)`);
+    logWithTimestamp(`[PUT] 目录未设置，返回 500 状态 (待实现具体设置逻辑)`);
     return NextResponse.json({ message: "Directory jaged" }, { status: 500 });
   } catch (error) {
-    console.error("[PUT] Error scanning movies:", error); // 记录错误信息
+    errorWithTimestamp("[PUT] Error scanning movies:", error);
     return NextResponse.json(
       { error: "PUTFailed to scan movies" },
       { status: 500 }
@@ -610,23 +624,23 @@ export async function PUT() {
  * @returns NextApiResponse 包含成功或错误信息。
  */
 export async function POST(request: Request) {
-  console.log(`[POST] 接收到 POST 请求`);
+  logWithTimestamp(`[POST] 接收到 POST 请求`);
   try {
     // 从请求体中解析 folderPath
     const { folderPath } = await request.json();
-    console.log("[POST] 接收到的原始路径:", folderPath);
+    logWithTimestamp("[POST] 接收到的原始路径:", folderPath);
     // 清理路径
     const cleanPath = folderPath.replace(/['"]/g, "").replace(/\\/g, "/");
-    console.log("[POST] 处理后的路径:", cleanPath);
+    logWithTimestamp("[POST] 处理后的路径:", cleanPath);
 
     // 存储路径到文件
-    console.log(`[POST] 尝试存储目录: ${cleanPath}`);
+    logWithTimestamp(`[POST] 尝试存储目录: ${cleanPath}`);
     await storeDirectory(cleanPath);
-    console.log(`[POST] 目录存储成功`);
+    logWithTimestamp(`[POST] 目录存储成功`);
 
     return NextResponse.json({ message: "扫描请求已接收", path: cleanPath });
   } catch (error) {
-    console.error("[POST] Error scanning movies:", error); // 记录错误信息
+    errorWithTimestamp("[POST] Error scanning movies:", error);
     return NextResponse.json(
       { error: "POSTFailed to scan movies" },
       { status: 500 }
@@ -639,15 +653,15 @@ export async function POST(request: Request) {
  * @returns NextApiResponse 包含成功或错误信息。
  */
 export async function DELETE() {
-  console.log(`[DELETE] 接收到 DELETE 请求`);
+  logWithTimestamp(`[DELETE] 接收到 DELETE 请求`);
   try {
-    console.log(`[DELETE] 尝试清空 movie-directory.txt 文件`);
+    logWithTimestamp(`[DELETE] 尝试清空 movie-directory.txt 文件`);
     // 将 movie-directory.txt 文件内容清空
     await writeFile("movie-directory.txt", "");
-    console.log(`[DELETE] movie-directory.txt 文件已清空`);
+    logWithTimestamp(`[DELETE] movie-directory.txt 文件已清空`);
     return NextResponse.json({ message: "Movie directory cleared" });
   } catch (error) {
-    console.error("[DELETE] Error clearing movie directory:", error); // 记录错误信息
+    errorWithTimestamp("[DELETE] Error clearing movie directory:", error);
     return NextResponse.json(
       { error: "Failed to clear movie directory" },
       { status: 500 }
