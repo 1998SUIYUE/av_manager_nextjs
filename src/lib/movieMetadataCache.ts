@@ -21,7 +21,7 @@ async function readCache(): Promise<MovieMetadata[]> {
   if (_cache !== null && _lastStatCheckTime !== null && 
       (Date.now() - _lastStatCheckTime) < STAT_CHECK_INTERVAL_MS) {
     // console.log('[readCache] 从内存缓存中快速读取 (在间隔内)');
-    return _cache!;
+    return _cache;
   }
 
   try {

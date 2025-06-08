@@ -35,6 +35,10 @@ export default function MoviesPage() {
 
   const [forwardSeconds, setForwardSeconds] = useState(10);
 
+  // 添加计时器状态
+  const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
+  const [elapsedLoadingTime, setElapsedLoadingTime] = useState<number>(0);
+
   // 判断是否为手机屏幕
   const [isMobile, setIsMobile] = useState(false);
   // 手机端演员筛选折叠控制
@@ -71,6 +75,8 @@ export default function MoviesPage() {
   useEffect(() => {
     async function fetchMovies() {
       try {
+        setIsLoading(true); // 开始加载时设置加载状态
+        setLoadingStartTime(Date.now()); // 记录加载开始时间
         const response = await fetch("/api/movies");
         if (!response.ok) {
           const errorText = await response.text();
@@ -92,17 +98,39 @@ export default function MoviesPage() {
         );
         
         setMovies(moviesWithLocalCovers);
-        setIsLoading(false);
+        setIsLoading(false); // 加载完成
+        setLoadingStartTime(null); // 清除开始时间
+        setElapsedLoadingTime(0); // 重置计时
       } catch (err) {
         console.error("Error fetching movies:", err);
         setError(
           err instanceof Error ? err.message : "An unknown error occurred"
         );
-        setIsLoading(false);
+        setIsLoading(false); // 加载失败
+        setLoadingStartTime(null); // 清除开始时间
+        setElapsedLoadingTime(0); // 重置计时
       }
     }
     fetchMovies();
   }, []);
+
+  // 计时器效果
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    if (isLoading && loadingStartTime !== null) {
+      timer = setInterval(() => {
+        setElapsedLoadingTime(Date.now() - loadingStartTime);
+      }, 100); // 每100毫秒更新一次
+    } else if (!isLoading && timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    return () => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    };
+  }, [isLoading, loadingStartTime]);
 
   const actresses = useMemo(() => {
     const actressCount: Record<string, number> = {};
@@ -266,7 +294,8 @@ export default function MoviesPage() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-10">加载中...</div>;
+    const seconds = (elapsedLoadingTime / 1000).toFixed(1);
+    return <div className="text-center py-10">加载中... {seconds}秒</div>;
   }
 
   if (error) {
