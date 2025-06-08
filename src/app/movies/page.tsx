@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import DirectoryInput from "@/components/DirectoryInput";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
@@ -38,6 +38,8 @@ const MoviesPage = () => {
   const limit = 50; // 每次加载的电影数量
   const [hasMore, setHasMore] = useState(true); // 是否还有更多电影可以加载
   const [totalMovies, setTotalMovies] = useState(0); // 总电影数量
+
+  const bottomBoundaryRef = useRef<HTMLDivElement>(null); // 用于观察底部边界的引用
 
   useEffect(() => {
     if (loadingStartTime) {
@@ -87,9 +89,32 @@ const MoviesPage = () => {
     fetchMovies(0);
   }, [fetchMovies]);
 
-  const handleLoadMore = () => {
-    setOffset((prevOffset) => prevOffset + limit);
-  };
+  // 使用 Intersection Observer 实现无限滚动
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          setOffset((prevOffset) => prevOffset + limit);
+        }
+      },
+      { threshold: 1.0 } // 当目标元素完全可见时触发
+    );
+
+    if (bottomBoundaryRef.current) {
+      observer.observe(bottomBoundaryRef.current);
+    }
+
+    return () => {
+      if (bottomBoundaryRef.current) {
+        observer.unobserve(bottomBoundaryRef.current);
+      }
+    };
+  }, [hasMore, loading, limit]); // 依赖项：hasMore, loading, limit
+
+  // handleLoadMore 函数不再需要，因为我们使用 Intersection Observer 自动加载
+  // const handleLoadMore = () => {
+  //   setOffset((prevOffset) => prevOffset + limit);
+  // };
 
   useEffect(() => {
     if (offset > 0) {
@@ -201,15 +226,14 @@ const MoviesPage = () => {
         ))}
       </div>
 
-      {hasMore && !loading && totalMovies > 0 && (
-        <div className="flex justify-center mt-8">
-          <button
-            onClick={handleLoadMore}
-            className="px-6 py-3 bg-green-600 rounded-md hover:bg-green-700 text-lg font-semibold"
-          >
-            加载更多
-          </button>
-        </div>
+      {/* 哨兵元素，用于 Intersection Observer 监测 */} 
+      {hasMore && (
+        <div ref={bottomBoundaryRef} style={{ height: '20px', margin: '20px 0' }}></div>
+      )}
+
+      {/* 加载更多提示 (当有更多数据时) */} 
+      {loading && hasMore && (
+        <p className="text-center text-xl mt-4">正在加载更多电影...</p>
       )}
 
       {!loading && movies.length === 0 && !error && (
