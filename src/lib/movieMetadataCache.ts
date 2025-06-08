@@ -11,18 +11,23 @@ interface MovieMetadata {
 
 const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
 
+let _cache: MovieMetadata[] | null = null; // 添加内存缓存变量
 
 async function readCache(): Promise<MovieMetadata[]> {
-  try {
-    const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
-    if (!cacheContent || cacheContent.trim() === '') {
-      return [];
+  if (_cache === null) { // 确保只在未加载时读取文件
+    try {
+      const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
+      if (!cacheContent || cacheContent.trim() === '') {
+        _cache = [];
+      } else {
+        _cache = JSON.parse(cacheContent); // 缓存到内存
+      }
+    } catch (error) {
+      console.error('Error reading movie metadata cache:', error);
+      _cache = []; // 读取失败时清空缓存
     }
-    return JSON.parse(cacheContent);
-  } catch (error) {
-    console.error('Error reading movie metadata cache:', error);
-    return [];
   }
+  return _cache!; // 此时_cache保证为 MovieMetadata[]，使用非空断言
 }
 
 async function writeCache(cache: MovieMetadata[]) {
@@ -87,6 +92,7 @@ export async function updateMovieMetadataCache(
       cache = cache.slice(0, MAX_CACHE_SIZE);
     }
     
+    _cache = cache; // 更新内存缓存
     await writeCache(cache);
   } catch (error) {
     console.log('Error updating movie metadata cache:', error);
