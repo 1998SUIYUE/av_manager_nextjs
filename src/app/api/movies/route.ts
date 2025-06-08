@@ -554,6 +554,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const offset = parseInt(searchParams.get('offset') || '0', 10); // 默认从0开始
     const limit = parseInt(searchParams.get('limit') || '50', 10);   // 默认每页50条
+    const fetchAll = searchParams.get('fetch_all') === 'true'; // 新增：检查是否存在 fetch_all 参数
 
     // 获取存储的电影目录
     const movieDirectory = await getStoredDirectory();
@@ -569,9 +570,16 @@ export async function GET(request: Request) {
     const allMovieFiles = await scanMovieDirectory(cleanPath);
     logWithTimestamp(`[GET] 完成原始电影扫描，发现 ${allMovieFiles.length} 个文件`);
     
-    // 根据offset和limit对电影文件进行切片，获取当前页面的电影数据
-    const paginatedMovieFiles = allMovieFiles.slice(offset, offset + limit);
-    logWithTimestamp(`[GET] 分页获取 ${paginatedMovieFiles.length} 条电影数据 (offset: ${offset}, limit: ${limit})`);
+    let paginatedMovieFiles: MovieFile[];
+    if (fetchAll) {
+      // 如果 fetch_all 为 true，则返回所有电影文件
+      paginatedMovieFiles = allMovieFiles;
+      logWithTimestamp(`[GET] 返回所有 ${allMovieFiles.length} 条电影数据 (fetch_all: true)`);
+    } else {
+      // 否则，按分页返回电影文件
+      paginatedMovieFiles = allMovieFiles.slice(offset, offset + limit);
+      logWithTimestamp(`[GET] 分页获取 ${paginatedMovieFiles.length} 条电影数据 (offset: ${offset}, limit: ${limit})`);
+    }
 
     // 对当前页面的电影数据进行元数据处理（获取封面等）
     const processedMovies = await processMovieFiles(paginatedMovieFiles);

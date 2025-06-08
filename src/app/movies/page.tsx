@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import DirectoryInput from "@/components/DirectoryInput";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
 import { errorWithTimestamp } from "@/utils/logger";
@@ -33,6 +32,7 @@ const MoviesPage = () => {
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null); // 加载开始时间
   const [elapsedLoadingTime, setElapsedLoadingTime] = useState<number>(0); // 已用加载时间
   const [sortMode, setSortMode] = useState<SortMode>("time"); // 默认按时间排序
+  const [searchQuery, setSearchQuery] = useState<string>(""); // 新增：搜索关键词状态
 
   const [offset, setOffset] = useState(0); // 当前加载的电影数量偏移量
   const limit = 50; // 每次加载的电影数量
@@ -58,22 +58,41 @@ const MoviesPage = () => {
     }
     setError(null);
     try {
-      const response = await fetch(`/api/movies?offset=${currentOffset}&limit=${limit}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      let apiUrl = `/api/movies`;
+      if (searchQuery) {
+        // 如果有搜索关键词，获取所有电影
+        apiUrl = `/api/movies?fetch_all=true`;
+        setMovies([]); // 搜索时清空当前列表，重新加载
+        setOffset(0); // 搜索时重置偏移量
+      } else {
+        // 否则进行分页加载
+        apiUrl = `/api/movies?offset=${currentOffset}&limit=${limit}`;
       }
-      const data = await response.json();
-      setMovies((prevMovies) => {
-        const newMovies = data.movies.filter(
-          (newMovie: MovieData) =>
-            !prevMovies.some(
-              (prevMovie) => prevMovie.absolutePath === newMovie.absolutePath
-            )
-        );
-        return [...prevMovies, ...newMovies];
-      });
+
+      const response = await fetch(apiUrl);
+        if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+
+      if (searchQuery) {
+        // 如果是搜索结果，直接替换电影列表
+        setMovies(data.movies);
+        setHasMore(false); // 搜索结果不分页，所以没有更多
+      } else {
+        // 否则追加电影列表
+        setMovies((prevMovies) => {
+          const newMovies = data.movies.filter(
+            (newMovie: MovieData) =>
+              !prevMovies.some(
+                (prevMovie) => prevMovie.absolutePath === newMovie.absolutePath
+              )
+          );
+          return [...prevMovies, ...newMovies];
+        });
+        setHasMore(data.movies.length === limit); // 如果返回的数量小于limit，说明没有更多了
+      }
       setTotalMovies(data.total);
-      setHasMore(data.movies.length === limit); // 如果返回的数量小于limit，说明没有更多了
     } catch (e: unknown) {
       errorWithTimestamp("Error fetching movies:", e); // 使用导入的日志工具
       setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
@@ -83,11 +102,12 @@ const MoviesPage = () => {
         setLoadingStartTime(null); // 首次加载完成时停止计时器
       }
     }
-  }, [limit]);
+  }, [limit, searchQuery]); // 添加 searchQuery 到依赖项
 
   useEffect(() => {
+    // 初始加载或搜索查询变化时加载第一页
     fetchMovies(0);
-  }, [fetchMovies]);
+  }, [fetchMovies, searchQuery]); // 添加 searchQuery 到依赖项，使其在搜索词变化时重新加载
 
   // 使用 Intersection Observer 实现无限滚动
   useEffect(() => {
@@ -111,73 +131,27 @@ const MoviesPage = () => {
     };
   }, [hasMore, loading, limit]); // 依赖项：hasMore, loading, limit
 
-  // handleLoadMore 函数不再需要，因为我们使用 Intersection Observer 自动加载
-  // const handleLoadMore = () => {
-  //   setOffset((prevOffset) => prevOffset + limit);
-  // };
-
   useEffect(() => {
     if (offset > 0) {
       fetchMovies(offset);
     }
   }, [offset, fetchMovies]);
 
-  // 处理目录设置的回调函数，当用户在 DirectoryInput 中设置新目录时触发
-  const handleSetDirectory = useCallback(async (folderPath: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/movies", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ folderPath }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      // 成功设置目录后，清空现有电影列表，重置offset，并重新加载电影数据
-      setMovies([]);
-      setOffset(0);
-      setHasMore(true);
-      await fetchMovies(0); // 重新加载第一页数据
-    } catch (e: unknown) {
-      errorWithTimestamp("Error setting directory:", e); // 使用导入的日志工具
-      setError(`Failed to set directory: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchMovies]);
-
-  // 处理清除目录的回调函数
-  const handleClearDirectory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/movies", {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      // 成功清除目录后，清空电影列表，重置offset，并重新加载电影数据 (此时应为空)
-      setMovies([]);
-      setOffset(0);
-      setHasMore(false); // 清空后没有更多数据
-      // 可以选择再次调用 fetchMovies(0) 来确认目录已清空，或者直接显示空状态
-    } catch (e: unknown) {
-      errorWithTimestamp("Error clearing directory:", e); // 使用导入的日志工具
-      setError(`Failed to clear directory: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // 根据排序模式对电影进行排序
   const sortedAndFilteredMovies = useMemo(() => {
-    const currentMovies = [...movies];
+    let currentMovies = [...movies];
+
+    // 搜索过滤
+    if (searchQuery) {
+      const lowerCaseQuery = searchQuery.toLowerCase();
+      currentMovies = currentMovies.filter(movie => 
+        (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
+      );
+    }
 
     if (sortMode === "time") {
       currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
@@ -185,29 +159,49 @@ const MoviesPage = () => {
       currentMovies.sort((a, b) => b.size - a.size);
     }
     return currentMovies;
-  }, [movies, sortMode]);
+  }, [movies, sortMode, searchQuery]); // 添加 searchQuery 到依赖项
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <h1 className="text-4xl font-bold text-center mb-8">电影列表</h1>
 
       <div className="mb-8 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
-        <DirectoryInput onSetDirectory={handleSetDirectory} onClearDirectory={handleClearDirectory} />
-        
+        {/* 搜索输入框 */}
+        <div className="relative w-full sm:w-1/2">
+          <input
+            type="text"
+            placeholder="搜索电影 (标题, 番号, 女优, 文件名)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full p-2 pr-10 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {/* 一键清除按钮 */}
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-white"
+            >
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
         {/* 排序模式切换 */}
         <div className="flex space-x-2">
-          <button
+        <button
             onClick={() => setSortMode("time")}
             className={`px-4 py-2 rounded-md ${sortMode === "time" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
+        >
             按时间排序
-          </button>
-          <button
+        </button>
+        <button
             onClick={() => setSortMode("size")}
             className={`px-4 py-2 rounded-md ${sortMode === "size" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
+        >
             按大小排序
-          </button>
+        </button>
         </div>
       </div>
 
@@ -220,24 +214,24 @@ const MoviesPage = () => {
 
       <p className="text-center text-lg mb-4">总电影数: {totalMovies}</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {sortedAndFilteredMovies.map((movie) => (
           <MovieCard key={movie.absolutePath} movie={movie} formatFileSize={formatFileSize} />
         ))}
       </div>
 
-      {/* 哨兵元素，用于 Intersection Observer 监测 */} 
+      {/* 哨兵元素，用于 Intersection Observer 监测 */}
       {hasMore && (
         <div ref={bottomBoundaryRef} style={{ height: '20px', margin: '20px 0' }}></div>
       )}
 
-      {/* 加载更多提示 (当有更多数据时) */} 
+      {/* 加载更多提示 (当有更多数据时) */}
       {loading && hasMore && (
         <p className="text-center text-xl mt-4">正在加载更多电影...</p>
       )}
 
       {!loading && movies.length === 0 && !error && (
-        <p className="text-center text-xl mt-8">没有找到电影文件。请设置一个目录。</p>
+        <p className="text-center text-xl mt-8">没有找到电影文件。</p>
       )}
     </div>
   );
