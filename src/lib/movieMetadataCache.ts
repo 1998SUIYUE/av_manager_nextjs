@@ -23,13 +23,41 @@ let _cache: MovieMetadata[] | null = null;
  * @param code 电影番号。
  * @returns 对应的电影元数据，如果未找到则返回 null。
  */
-export async function getCachedMovieMetadata(code: string): Promise<MovieMetadata | null> {
+export async function getCachedMovieMetadata(code: string, baseUrl: string): Promise<MovieMetadata | null> {
   logWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存`);
   // 1. 首先尝试从内存缓存中查找
   const cache = await readCache(); // 内部会处理文件读取
   const found = cache.find(m => m.code === code);
+
+  // 如果找到缓存条目，并且其 coverUrl 仍然是外部链接，则尝试本地化
+  if (found && found.coverUrl && (found.coverUrl.startsWith('http://') || found.coverUrl.startsWith('https://'))) {
+    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 发现外部封面URL，尝试本地化: ${found.coverUrl}`);
+    try {
+      // 使用 baseUrl 构建完整的 image-proxy URL
+      const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(found.coverUrl)}`;
+      logWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy API URL: ${proxyApiUrl}`);
+      const imageProxyResponse = await fetch(proxyApiUrl);
+      if (imageProxyResponse.ok) {
+        const proxyData = await imageProxyResponse.json();
+        const localCoverUrl = proxyData.imageUrl;
+        logWithTimestamp(`[getCachedMovieMetadata] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
+        
+        // 更新找到的缓存条目，并写入磁盘
+        found.coverUrl = localCoverUrl; 
+        await updateMovieMetadataCache(found.code, found.coverUrl, found.title, found.actress); // 持久化更新
+        logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 的封面URL已更新并持久化到本地`);
+      } else {
+        errorWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+        // 如果代理失败，可以考虑使用默认图片或者保留原始URL，但不再尝试本地化
+      }
+    } catch (proxyError) {
+      errorWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 发生错误: ${proxyError}`);
+      // 发生错误时，将 found 设为 null 或者不修改 found.coverUrl，以便后续处理
+    }
+  }
+
   if (found) {
-    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在内存缓存中找到`);
+    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
     return found;
   }
   logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);

@@ -1,3 +1,4 @@
+import { warnWithTimestamp } from '@/utils/logger';
 import fs from 'fs';
 import path from 'path';
 
@@ -52,8 +53,9 @@ export function scanMovieDirectory(directoryPath: string): MovieFile[] {
             coverUrl: parsedInfo.coverUrl,
             modifiedAt: stat.mtimeMs
           };
-
           movieFiles.push(movieFile);
+        } else{
+          warnWithTimestamp(`[scanMovieDirectory] 不支持的文件类型: ${fullPath}`);
         }
       }
     });
@@ -78,7 +80,10 @@ export function parseMovieFilename(filename: string): {
   // 正则匹配番号 如 ABC-123, CARIB-123, Tokyo-Hot-n1234
   const codeRegex = /([A-Za-z]{2,}-\d+|[A-Z]+-[A-Z]+-\d+)/i;
   const codeMatch = nameWithoutExt.match(codeRegex);
-  
+  //没有匹配到的文件名打印出来
+  if(!codeMatch){
+    warnWithTimestamp(`[parseMovieFilename] 没有匹配到的文件名: ${filename}`);
+  }
   const code = codeMatch ? codeMatch[1].toUpperCase() : undefined;
   
   // 生成封面图片URL（以 javbus 为例）

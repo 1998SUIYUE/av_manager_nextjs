@@ -2,7 +2,7 @@ export function logWithTimestamp(...args: unknown[]) {
   const now = new Date();
   const ts = now.toISOString().replace('T', ' ').replace('Z', '');
   // eslint-disable-next-line no-console
-  if(process.env.NODE_ENV === 'development') {
+  if(process.env.NODE_ENV === 'development' ) {
     console.log(`[${ts}]`, ...(args as unknown[]));
   }
 }
@@ -11,7 +11,7 @@ export function warnWithTimestamp(...args: unknown[]) {
   const now = new Date();
   const ts = now.toISOString().replace('T', ' ').replace('Z', '');
   // eslint-disable-next-line no-console
-  if(process.env.NODE_ENV === 'development') {
+  if(process.env.NODE_ENV === 'development' ) {
     console.warn(`[${ts}]`, ...(args as unknown[]));
   }
 }

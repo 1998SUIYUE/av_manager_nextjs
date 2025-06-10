@@ -67,11 +67,12 @@ function parseMovieFilename(filename: string): {
  * 根据电影番号从外部网站获取封面图片URL、标题和女优信息。
  * 会优先从本地缓存获取，如果缓存中没有，则使用 Playwright 进行网页抓取。
  * @param code 电影番号。
+ * @param baseUrl 当前请求的基础URL，用于构建image-proxy的绝对路径。
  * @returns 包含封面URL、标题和女优信息的对象，或在失败时返回null。
  */
-async function fetchCoverUrl(code: string) {
+async function fetchCoverUrl(code: string, baseUrl: string) {
   // 1. 首先检查本地电影元数据缓存
-  const cachedMetadata = await getCachedMovieMetadata(code);
+  const cachedMetadata = await getCachedMovieMetadata(code, baseUrl);
   if (cachedMetadata) {
     // 如果缓存命中，直接返回缓存数据，避免网络请求
     // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code}
@@ -159,6 +160,27 @@ async function fetchCoverUrl(code: string) {
         }
       }
 
+      // 如果成功获取到 coverUrl，则通过 image-proxy 进行本地缓存
+      if (coverUrl) {
+        logWithTimestamp(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
+        try {
+          const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`;
+          logWithTimestamp(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
+          const imageProxyResponse = await fetch(proxyApiUrl);
+          if (imageProxyResponse.ok) {
+            const proxyData = await imageProxyResponse.json();
+            const localCoverUrl = proxyData.imageUrl;
+            logWithTimestamp(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
+            coverUrl = localCoverUrl; // 更新 coverUrl 为本地路径
+          } else {
+            errorWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+            // 如果代理失败，可以考虑使用默认图片或者保留原始URL
+          }
+        } catch (proxyError) {
+          errorWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
+        }
+      }
+
       // 获取电影标题
       const titleSelectors = [
         `body > section > div > div.video-detail > h2 > strong.current-title`,
@@ -227,9 +249,10 @@ async function fetchCoverUrl(code: string) {
 /**
  * 处理扫描到的电影文件列表，获取其封面信息并检测重复文件。
  * @param movieFiles 扫描到的原始电影文件数组。
+ * @param baseUrl 当前请求的基础URL，用于构建image-proxy的绝对路径。
  * @returns 包含封面信息和去重后的电影文件数组。
  */
-async function processMovieFiles(movieFiles: MovieFile[]) {
+async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   // 根据文件最后修改时间降序排序电影文件 (最新的在前)
   const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
@@ -254,7 +277,7 @@ async function processMovieFiles(movieFiles: MovieFile[]) {
             try {
               // 使用 retryWithTimeout 包装 fetchCoverUrl，提供重试和超时功能
               const result = await retryWithTimeout(
-                () => fetchCoverUrl(movie.code!),
+                () => fetchCoverUrl(movie.code!, baseUrl),
                 3, // 最大重试次数
                 10000 // 每次重试的超时时间（毫秒）
               );
@@ -413,7 +436,7 @@ async function retryWithTimeout<T>(
  * @param directoryPath 目录的绝对路径。
  * @returns 一个 Promise，resolve 时携带一个 MovieFile 数组。
  */
-async function scanMovieDirectory(directoryPath: string) {
+async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
   logWithTimestamp(`[scanMovieDirectory] 开始扫描目录: ${directoryPath}`);
   // 处理路径中的引号和反斜杠，确保路径格式正确
   const cleanPath = directoryPath.replace(/['"]/g, "").replace(/\\/g, "/");
@@ -503,7 +526,7 @@ async function scanMovieDirectory(directoryPath: string) {
   await scanDirectory(cleanPath);
   logWithTimestamp(`[scanMovieDirectory] 扫描完成，发现 ${movieFiles.length} 个电影文件`);
   // 对扫描到的电影文件进行进一步处理，例如获取封面等
-  return processMovieFiles(movieFiles);
+  return processMovieFiles(movieFiles, baseUrl);
 }
 
 // 存储电影目录路径的文件
@@ -555,6 +578,7 @@ export async function GET(request: Request) {
     const offset = parseInt(searchParams.get('offset') || '0', 10); // 默认从0开始
     const limit = parseInt(searchParams.get('limit') || '50', 10);   // 默认每页50条
     const fetchAll = searchParams.get('fetch_all') === 'true'; // 新增：检查是否存在 fetch_all 参数
+    const baseUrl = new URL(request.url).origin; // 获取请求的协议和域名
 
     // 获取存储的电影目录
     const movieDirectory = await getStoredDirectory();
@@ -567,7 +591,7 @@ export async function GET(request: Request) {
     const cleanPath = movieDirectory.replace(/['"]/g, "").replace(/\\/g, "/");
     logWithTimestamp(`[GET] 开始扫描电影目录: ${cleanPath}`);
     // 扫描电影目录并获取所有原始的电影数据（不处理元数据）
-    const allMovieFiles = await scanMovieDirectory(cleanPath);
+    const allMovieFiles = await scanMovieDirectory(cleanPath, baseUrl);
     logWithTimestamp(`[GET] 完成原始电影扫描，发现 ${allMovieFiles.length} 个文件`);
     
     let paginatedMovieFiles: MovieFile[];
@@ -582,7 +606,7 @@ export async function GET(request: Request) {
     }
 
     // 对当前页面的电影数据进行元数据处理（获取封面等）
-    const processedMovies = await processMovieFiles(paginatedMovieFiles);
+    const processedMovies = await processMovieFiles(paginatedMovieFiles, baseUrl);
     logWithTimestamp(`[GET] 完成当前页面电影数据处理，返回 ${processedMovies.length} 条电影数据`);
 
     // 将处理后的电影数据和总数作为 JSON 响应返回
