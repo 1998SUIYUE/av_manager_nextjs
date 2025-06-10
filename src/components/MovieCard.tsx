@@ -23,7 +23,7 @@ interface MovieCardProps {
 const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieClick }) => {
   return (
     <div
-      className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer"
+      className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer relative"
       onClick={() => onMovieClick(movie.absolutePath)}
     >
       <img
@@ -34,14 +34,14 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
           e.currentTarget.src = "/placeholder-image.svg";
         }}
       />
-      <div className="p-4">
+      <div className="absolute bottom-0 left-0 right-0 w-full py-2 px-4 backdrop-blur-md bg-black/50 text-white text-sm">
         <h3 className="text-lg font-semibold truncate mb-1">
           {movie.displayTitle || movie.title || movie.filename}
         </h3>
-        {movie.code && <p className="text-sm text-gray-400">番号: {movie.code}</p>}
-        {movie.actress && <p className="text-sm text-gray-400">女优: {movie.actress}</p>}
-        <p className="text-sm text-gray-400">大小: {formatFileSize(movie.size)}</p>
-        <p className="text-sm text-gray-400">修改时间: {new Date(movie.modifiedAt).toLocaleDateString()}</p>
+        {movie.code && <p className="text-sm text-gray-300">番号: {movie.code}</p>}
+        {movie.actress && <p className="text-sm text-gray-300">女优: {movie.actress}</p>}
+        <p className="text-sm text-gray-300">大小: {formatFileSize(movie.size)}</p>
+        <p className="text-sm text-gray-300">修改时间: {new Date(movie.modifiedAt).toLocaleDateString()}</p>
       </div>
     </div>
   );
