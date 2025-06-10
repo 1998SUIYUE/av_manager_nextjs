@@ -29,7 +29,7 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
       <img
         src={movie.coverUrl || "/placeholder-image.svg"}
         alt={movie.displayTitle || movie.title || movie.filename}
-        className="w-full h-64 object-contain"
+        className="w-full object-contain"
         onError={(e) => {
           e.currentTarget.src = "/placeholder-image.svg";
         }}

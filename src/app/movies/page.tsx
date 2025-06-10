@@ -294,15 +294,15 @@ const MoviesPage = () => {
 
       {/* 视频播放器弹窗 */}
       {showVideoPlayer && selectedVideoPath && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-7xl h-full flex flex-col items-center justify-center">
-            <button
-              onClick={handleCloseVideoPlayer}
-              className="absolute top-2 right-2 text-white text-3xl font-bold p-2 z-10"
-              style={{ top: '10px', right: '10px' }} // 内联样式
-            >
-              &times;
-            </button>
+        <div
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          onClick={handleCloseVideoPlayer} // 点击背景关闭
+        >
+          <div
+            className="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-7xl h-full flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()} // 阻止事件冒泡到背景
+          >
+            
             <VideoPlayer
               src={`/api/video/stream?path=${btoa(selectedVideoPath)}`}
               filepath={selectedVideoPath} // 传递完整路径用于打开文件位置或删除
