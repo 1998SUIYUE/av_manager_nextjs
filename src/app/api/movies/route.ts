@@ -89,7 +89,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
   // 2. 如果缓存未命中，启动 Playwright 浏览器进行网页抓取
   let browser = null;
   try {
-    logWithTimestamp(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
+    console.log(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
 
     // 启动无头模式的 Chromium 浏览器
     browser = await chromium.launch({
@@ -108,7 +108,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
     // 构造 JavDB 搜索 URL
     const url = `https://javdb.com/search?q=${code}&f=all/`;
-    logWithTimestamp(`[fetchCoverUrl] 开始访问 URL: ${url}`);
+    console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
       // 导航到搜索结果页，等待 DOM 内容加载完成
@@ -132,7 +132,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      logWithTimestamp(
+      console.log(
         `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
       );
 
@@ -156,28 +156,28 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         } else {
           // 如果默认选择器未找到封面，则使用备用封面URL
           coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-          errorWithTimestamp(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
+          console.log(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
         }
       }
 
       // 如果成功获取到 coverUrl，则通过 image-proxy 进行本地缓存
       if (coverUrl) {
-        logWithTimestamp(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
+        console.log(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
         try {
           const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`;
-          logWithTimestamp(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
+          console.log(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
           const imageProxyResponse = await fetch(proxyApiUrl);
           if (imageProxyResponse.ok) {
             const proxyData = await imageProxyResponse.json();
             const localCoverUrl = proxyData.imageUrl;
-            logWithTimestamp(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
+            console.log(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
             coverUrl = localCoverUrl; // 更新 coverUrl 为本地路径
           } else {
-            errorWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+            console.log(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
             // 如果代理失败，可以考虑使用默认图片或者保留原始URL
           }
         } catch (proxyError) {
-          errorWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
+          console.log(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
         }
       }
 
@@ -198,7 +198,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
           // );
           break; // 找到标题后跳出循环
         } else {
-          errorWithTimestamp(`[error] 选择器 ${selector} 未找到标题`);
+          console.log(`[error] 选择器 ${selector} 未找到标题`);
         }
       }
 
@@ -220,12 +220,12 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
       // 如果成功获取到标题，则更新本地缓存
       if (title) {
-        logWithTimestamp(
+        console.log(
           `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
         await updateMovieMetadataCache(code, coverUrl, title, actress);
       } else {
-        errorWithTimestamp(`[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`);
+        console.log(`[error] 番号 ${code} 处理失败 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`);
       }
 
       return {
@@ -234,11 +234,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         actress,
       };
     } catch (navigationError) {
-      errorWithTimestamp(`[fetchCoverUrl] 页面导航错误:`, navigationError);
+      console.log(`[fetchCoverUrl] 页面导航错误:`, navigationError);
       return { coverUrl: null, title: null, actress: null };
     }
   } catch (error) {
-    errorWithTimestamp(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
+    console.log(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
     if (browser) {
       await browser.close();
     }
