@@ -154,6 +154,20 @@ const MoviesPage = () => {
     setShowVideoPlayer(false);
   }, []);
 
+  // 新增：处理刷新操作
+  const handleRefresh = useCallback(() => {
+    logWithTimestamp("[MoviesPage] 用户手动刷新列表");
+    setMovies([]); // 清空当前电影列表
+    setOffset(0); // 重置偏移量
+    setHasMore(true); // 假设还有更多数据，fetchMovies 会纠正这个
+    // fetchMovies(0) 会在 useEffect 中因为 offset 和 movies 变化而被触发，或者我们可以直接调用
+    // 为确保立即执行，并且覆盖搜索状态，我们直接调用并清空搜索查询（如果需要）
+    // 如果希望刷新保留当前搜索词，则不清空 searchQuery
+    // 这里我们假设刷新是全局的，所以清空搜索（如果行为需要不同，可以调整）
+    // setSearchQuery(""); // 可选：如果刷新应清除搜索
+    fetchMovies(0); 
+  }, [fetchMovies]);
+
   // 处理电影删除操作
   const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
     if (!filePath) {
@@ -255,10 +269,18 @@ const MoviesPage = () => {
         >
             按大小排序
         </button>
+        {/* 新增刷新按钮 */}
+        <button
+            onClick={handleRefresh}
+            className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white"
+            disabled={loading}
+          >
+            {loading && !searchQuery ? "加载中..." : "刷新列表"}
+          </button>
         </div>
       </div>
 
-      {loading && loadingStartTime && (
+      {loading && loadingStartTime && !searchQuery && (
         <p className="text-center text-xl mb-4">
           加载中... 已用时: {elapsedLoadingTime} 秒
         </p>
