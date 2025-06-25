@@ -4,6 +4,77 @@ import path from 'path';
 import stream from 'stream'; // 导入 stream 模块
 import { logWithTimestamp, errorWithTimestamp } from '@/utils/logger'; // 导入日志工具
 
+// 创建安全的 ReadableStream 包装器，防止控制器重复关闭错误
+function createSafeReadableStream(fileStream: fs.ReadStream, logPrefix: string): ReadableStream<Uint8Array> {
+  let controllerClosed = false;
+  
+  return new ReadableStream({
+    start(controller) {
+      const webStream = stream.Readable.toWeb(fileStream);
+      const reader = webStream.getReader();
+      
+      function pump(): Promise<void> {
+        return reader.read().then(({ done, value }) => {
+          if (done) {
+            if (!controllerClosed) {
+              try {
+                controller.close();
+                controllerClosed = true;
+              } catch (error) {
+                // 忽略重复关闭错误
+                if (error instanceof Error && !error.message.includes('already closed')) {
+                  errorWithTimestamp(`${logPrefix} Error closing stream controller:`, error);
+                }
+              }
+            }
+            return;
+          }
+          
+          if (!controllerClosed) {
+            try {
+              controller.enqueue(value);
+              return pump();
+            } catch (error) {
+              if (error instanceof Error && !error.message.includes('already closed')) {
+                errorWithTimestamp(`${logPrefix} Error enqueuing data:`, error);
+                if (!controllerClosed) {
+                  try {
+                    controller.error(error);
+                    controllerClosed = true;
+                  } catch (controllerError) {
+                    // 忽略控制器已关闭的错误
+                  }
+                }
+              }
+              return Promise.resolve();
+            }
+          }
+          return Promise.resolve();
+        }).catch((error) => {
+          if (!controllerClosed) {
+            try {
+              controller.error(error);
+              controllerClosed = true;
+            } catch (controllerError) {
+              // 忽略控制器已关闭的错误
+              if (controllerError instanceof Error && !controllerError.message.includes('already closed')) {
+                errorWithTimestamp(`${logPrefix} Error in controller.error:`, controllerError);
+              }
+            }
+          }
+        });
+      }
+      
+      return pump();
+    },
+    cancel() {
+      // 清理资源
+      controllerClosed = true;
+      fileStream.destroy();
+    }
+  });
+}
+
 // 支持的视频文件扩展名
 const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
 
@@ -11,6 +82,28 @@ export async function GET(
   request: NextRequest
 ) {
   logWithTimestamp('[video API] Received video stream request.'); // 添加日志
+  
+  // 添加临时的未捕获异常处理器，专门处理流控制器错误
+  const originalUncaughtExceptionHandler = process.listeners('uncaughtException');
+  const streamErrorHandler = (error: Error) => {
+    if (error.message.includes('Controller is already closed') || 
+        error.message.includes('already closed') ||
+        error.code === 'ERR_INVALID_STATE') {
+      // 静默处理流控制器错误，只记录到日志
+      logWithTimestamp(`[video API] Handled stream controller error: ${error.message}`);
+      return; // 不让错误继续传播
+    }
+    // 其他错误继续正常处理
+    errorWithTimestamp('[video API] Uncaught exception:', error);
+  };
+  
+  process.on('uncaughtException', streamErrorHandler);
+  
+  // 确保在请求结束时清理处理器
+  const cleanup = () => {
+    process.removeListener('uncaughtException', streamErrorHandler);
+  };
+  
   try {
     // 从查询参数获取文件路径
     const searchParams = request.nextUrl.searchParams;
@@ -75,11 +168,19 @@ export async function GET(
         'Cache-Control': 'public, max-age=86400'
       });
       
+      // 创建文件流并添加错误处理
       const fileStream = fs.createReadStream(absolutePath, { start, end });
-      const webStream = stream.Readable.toWeb(fileStream); // 转换为 Web Stream
+      
+      // 添加错误处理，防止流被意外关闭
+      fileStream.on('error', (error) => {
+        errorWithTimestamp(`[video API] File stream error for range ${start}-${end}:`, error);
+      });
+      
+      // 使用安全的 ReadableStream 包装器
+      const safeWebStream = createSafeReadableStream(fileStream, `[video API Range ${start}-${end}]`);
 
       logWithTimestamp(`[video API] Serving partial content: ${absolutePath}, Range: ${start}-${end}`);
-      return new NextResponse(webStream as ReadableStream<Uint8Array>, { 
+      return new NextResponse(safeWebStream, { 
         status: 206, 
         headers 
       });
@@ -93,11 +194,19 @@ export async function GET(
         'Cache-Control': 'public, max-age=86400'
       });
       
+      // 创建文件流并添加错误处理
       const fileStream = fs.createReadStream(absolutePath);
-      const webStream = stream.Readable.toWeb(fileStream); // 转换为 Web Stream
+      
+      // 添加错误处理
+      fileStream.on('error', (error) => {
+        errorWithTimestamp(`[video API] File stream error for full content:`, error);
+      });
+      
+      // 使用安全的 ReadableStream 包装器
+      const safeWebStream = createSafeReadableStream(fileStream, '[video API Full Content]');
 
       logWithTimestamp(`[video API] Serving full content: ${absolutePath}`);
-      return new NextResponse(webStream as ReadableStream<Uint8Array>, { 
+      return new NextResponse(safeWebStream, { 
         status: 200, 
         headers 
       });
@@ -105,6 +214,9 @@ export async function GET(
   } catch (error: unknown) {
     errorWithTimestamp('[video API] Video streaming error:', error);
     return new NextResponse(`处理视频时发生错误: ${error instanceof Error ? error.message : String(error)}`, { status: 500 });
+  } finally {
+    // 清理未捕获异常处理器
+    cleanup();
   }
 }
 

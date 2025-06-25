@@ -67,8 +67,7 @@ const MoviesPage = () => {
       if (searchQuery) {
         // 如果有搜索关键词，获取所有电影
         apiUrl = `/api/movies?fetch_all=true`;
-        setMovies([]); // 搜索时清空当前列表，重新加载
-        setOffset(0); // 搜索时重置偏移量
+        // 注意：不在这里清空movies，因为这会导致重复清空
       } else {
         // 否则进行分页加载
         apiUrl = `/api/movies?offset=${currentOffset}&limit=${limit}`;
@@ -84,17 +83,23 @@ const MoviesPage = () => {
         // 如果是搜索结果，直接替换电影列表
         setMovies(data.movies);
         setHasMore(false); // 搜索结果不分页，所以没有更多
-            } else {
-        // 否则追加电影列表
-        setMovies((prevMovies) => {
-          const newMovies = data.movies.filter(
-            (newMovie: MovieData) =>
-              !prevMovies.some(
-                (prevMovie) => prevMovie.absolutePath === newMovie.absolutePath
-              )
-          );
-          return [...prevMovies, ...newMovies];
-        });
+      } else {
+        // 否则根据偏移量决定是替换还是追加
+        if (currentOffset === 0) {
+          // 如果是从头开始加载，直接替换
+          setMovies(data.movies);
+        } else {
+          // 否则追加电影列表
+          setMovies((prevMovies) => {
+            const newMovies = data.movies.filter(
+              (newMovie: MovieData) =>
+                !prevMovies.some(
+                  (prevMovie) => prevMovie.absolutePath === newMovie.absolutePath
+                )
+            );
+            return [...prevMovies, ...newMovies];
+          });
+        }
         setHasMore(data.movies.length === limit); // 如果返回的数量小于limit，说明没有更多了
       }
       setTotalMovies(data.total);
@@ -111,6 +116,10 @@ const MoviesPage = () => {
 
   useEffect(() => {
     // 初始加载或搜索查询变化时加载第一页
+    // 当搜索查询变化时，需要重置状态
+    setMovies([]); // 清空当前列表
+    setOffset(0); // 重置偏移量
+    setHasMore(true); // 重置"还有更多"状态
     fetchMovies(0);
   }, [fetchMovies, searchQuery]); // 添加 searchQuery 到依赖项，使其在搜索词变化时重新加载
 
@@ -197,7 +206,13 @@ const MoviesPage = () => {
       logWithTimestamp(`[MoviesPage] 电影删除成功: ${filePath}`);
       alert(`电影 "${filename || filePath}" 已成功删除。`);
       setShowVideoPlayer(false); // 关闭视频播放器
-      fetchMovies(0); // 重新加载电影列表以反映删除
+      
+      // 立即从当前列表中移除已删除的电影，提供更好的用户体验
+      setMovies(prevMovies => prevMovies.filter(movie => movie.absolutePath !== filePath));
+      setTotalMovies(prevTotal => Math.max(0, prevTotal - 1)); // 减少总数
+      
+      // 可选：如果当前页面电影数量太少，可以尝试加载更多
+      // 这里我们简化处理，只是移除已删除的项目
     } catch (error) {
       errorWithTimestamp(`[MoviesPage] 删除电影时发生错误: ${filePath}`, error);
       alert(error instanceof Error ? error.message : "删除电影时发生错误");
