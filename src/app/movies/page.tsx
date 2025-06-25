@@ -21,10 +21,17 @@ interface MovieData {
   coverUrl?: string | null; // 封面图片URL，可选
   displayTitle?: string; // 用于显示给用户的标题，可能与原始title不同
   actress?: string | null; // 女优名字，可选
+  // Elo评分相关字段
+  elo?: number; // Elo评分
+  matchCount?: number; // 对比次数
+  winCount?: number; // 胜利次数
+  drawCount?: number; // 平局次数
+  lossCount?: number; // 失败次数
+  winRate?: number; // 胜率
 }
 
 // 定义排序模式的类型
-type SortMode = "time" | "size";
+type SortMode = "time" | "size" | "elo";
 
 const MoviesPage = () => {
   const [movies, setMovies] = useState<MovieData[]>([]);
@@ -45,6 +52,13 @@ const MoviesPage = () => {
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
   const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null); // 当前播放视频的路径
+
+  // 对比评分相关状态
+  const [showComparison, setShowComparison] = useState<boolean>(false); // 控制对比评分界面显示
+  const [comparisonMovieA, setComparisonMovieA] = useState<MovieData | null>(null); // 对比影片A
+  const [comparisonMovieB, setComparisonMovieB] = useState<MovieData | null>(null); // 对比影片B
+  const [previewA, setPreviewA] = useState<boolean>(false); // 是否预览影片A
+  const [previewB, setPreviewB] = useState<boolean>(false); // 是否预览影片B
 
   useEffect(() => {
     if (loadingStartTime) {
@@ -219,6 +233,239 @@ const MoviesPage = () => {
     }
   }, [fetchMovies]);
 
+  // 开始对比评分
+  const startComparison = useCallback(() => {
+    if (movies.length < 2) return;
+    
+    // 只选择有番号的影片
+    const availableMovies = movies.filter(movie => movie.code);
+    if (availableMovies.length < 2) {
+      alert("需要至少2部有番号的影片才能进行对比评分");
+      return;
+    }
+
+    // 统计评分情况
+    const ratedMoviesCount = availableMovies.filter(movie => movie.matchCount && movie.matchCount > 0).length;
+    const totalMoviesCount = availableMovies.length;
+    const ratedPercentage = totalMoviesCount > 0 ? (ratedMoviesCount / totalMoviesCount) * 100 : 0;
+    
+    logWithTimestamp(`[startComparison] 当前评分统计: ${ratedMoviesCount}/${totalMoviesCount} 部影片已评分 (${ratedPercentage.toFixed(1)}%)`);
+    
+    // 智能选择算法
+    let movieA, movieB;
+    
+    // 1. 首先尝试选择一部未评分的影片作为A
+    const unratedMovies = availableMovies.filter(movie => !movie.matchCount || movie.matchCount === 0);
+    
+    if (unratedMovies.length > 0) {
+      // 如果有未评分的影片，优先选择一部作为A
+      movieA = unratedMovies[Math.floor(Math.random() * unratedMovies.length)];
+      logWithTimestamp(`[startComparison] 选择了未评分的影片A: ${movieA.code}`);
+      
+      // 对于B，我们有50%的概率选择另一部未评分的影片，50%的概率选择已评分的影片
+      const otherUnratedMovies = unratedMovies.filter(m => m.code !== movieA.code);
+      const ratedMovies = availableMovies.filter(movie => movie.matchCount && movie.matchCount > 0);
+      
+      if (otherUnratedMovies.length > 0 && (ratedMovies.length === 0 || Math.random() < 0.5)) {
+        // 选择另一部未评分的影片
+        movieB = otherUnratedMovies[Math.floor(Math.random() * otherUnratedMovies.length)];
+        logWithTimestamp(`[startComparison] 选择了未评分的影片B: ${movieB.code}`);
+      } else if (ratedMovies.length > 0) {
+        // 选择一部已评分的影片
+        movieB = ratedMovies[Math.floor(Math.random() * ratedMovies.length)];
+        logWithTimestamp(`[startComparison] 选择了已评分的影片B: ${movieB.code} (已进行${movieB.matchCount}次评分)`);
+      } else {
+        // 如果没有其他未评分的影片，随机选择一部不同的影片
+        do {
+          movieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
+        } while (movieB.code === movieA.code);
+        logWithTimestamp(`[startComparison] 随机选择了影片B: ${movieB.code}`);
+      }
+    } else {
+      // 2. 如果所有影片都已评分，则选择评分次数最少的影片作为A
+      availableMovies.sort((a, b) => (a.matchCount || 0) - (b.matchCount || 0));
+      
+      // 从评分次数最少的20%影片中随机选择
+      const leastRatedCount = Math.max(1, Math.ceil(availableMovies.length * 0.2));
+      const leastRatedMovies = availableMovies.slice(0, leastRatedCount);
+      
+      movieA = leastRatedMovies[Math.floor(Math.random() * leastRatedMovies.length)];
+      logWithTimestamp(`[startComparison] 所有影片都已评分，选择了评分次数较少的影片A: ${movieA.code} (已进行${movieA.matchCount}次评分)`);
+      
+      // 对于B，避免选择最近已经与A对比过的影片
+      const recentMatches = movieA.recentMatches || [];
+      const availableForB = availableMovies.filter(m => 
+        m.code !== movieA.code && !recentMatches.includes(m.code)
+      );
+      
+      if (availableForB.length > 0) {
+        movieB = availableForB[Math.floor(Math.random() * availableForB.length)];
+        logWithTimestamp(`[startComparison] 选择了未在最近与A对比过的影片B: ${movieB.code}`);
+      } else {
+        // 如果所有影片都与A对比过，随机选择一部不同的影片
+        do {
+          movieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
+        } while (movieB.code === movieA.code);
+        logWithTimestamp(`[startComparison] 随机选择了影片B: ${movieB.code}`);
+      }
+    }
+    
+    setComparisonMovieA(movieA);
+    setComparisonMovieB(movieB);
+    setShowComparison(true);
+    // 重置预览状态
+    setPreviewA(false);
+    setPreviewB(false);
+    
+    // 显示评分进度
+    const remainingUnrated = unratedMovies.length;
+    if (remainingUnrated > 0) {
+      logWithTimestamp(`[startComparison] 评分进度: 还有 ${remainingUnrated} 部影片未评分`);
+    } else {
+      logWithTimestamp(`[startComparison] 评分进度: 所有影片都已至少评分一次`);
+    }
+  }, [movies]);
+
+  // 处理对比结果
+  const handleComparisonResult = useCallback(async (result: 'A_WINS' | 'B_WINS' | 'DRAW') => {
+    if (!comparisonMovieA || !comparisonMovieB) return;
+    
+    try {
+      const response = await fetch('/api/movies/rating', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          movieACode: comparisonMovieA.code,
+          movieBCode: comparisonMovieB.code,
+          result: result
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // 直接更新本地电影数据，而不是重新加载
+        setMovies(prevMovies => {
+          return prevMovies.map(movie => {
+            if (movie.code === comparisonMovieA.code) {
+              // 更新影片A的评分数据
+              const newElo = data.movieA.newElo;
+              const newMatchCount = (movie.matchCount || 0) + 1;
+              const newWinCount = (movie.winCount || 0) + (result === 'A_WINS' ? 1 : 0);
+              const newDrawCount = (movie.drawCount || 0) + (result === 'DRAW' ? 1 : 0);
+              const newLossCount = (movie.lossCount || 0) + (result === 'B_WINS' ? 1 : 0);
+              const newWinRate = newMatchCount > 0 ? newWinCount / newMatchCount : 0;
+              
+              return {
+                ...movie,
+                elo: newElo,
+                matchCount: newMatchCount,
+                winCount: newWinCount,
+                drawCount: newDrawCount,
+                lossCount: newLossCount,
+                winRate: newWinRate
+              };
+            } else if (movie.code === comparisonMovieB.code) {
+              // 更新影片B的评分数据
+              const newElo = data.movieB.newElo;
+              const newMatchCount = (movie.matchCount || 0) + 1;
+              const newWinCount = (movie.winCount || 0) + (result === 'B_WINS' ? 1 : 0);
+              const newDrawCount = (movie.drawCount || 0) + (result === 'DRAW' ? 1 : 0);
+              const newLossCount = (movie.lossCount || 0) + (result === 'A_WINS' ? 1 : 0);
+              const newWinRate = newMatchCount > 0 ? newWinCount / newMatchCount : 0;
+              
+              return {
+                ...movie,
+                elo: newElo,
+                matchCount: newMatchCount,
+                winCount: newWinCount,
+                drawCount: newDrawCount,
+                lossCount: newLossCount,
+                winRate: newWinRate
+              };
+            }
+            return movie;
+          });
+        });
+        
+        // 开始下一轮对比
+        startComparison();
+      } else {
+        alert('评分提交失败，请重试');
+      }
+    } catch (error) {
+      console.error('提交评分时发生错误:', error);
+      alert('评分提交失败，请重试');
+    }
+  }, [comparisonMovieA, comparisonMovieB, startComparison]);
+
+  // 关闭对比界面
+  const closeComparison = useCallback(() => {
+    setShowComparison(false);
+    setComparisonMovieA(null);
+    setComparisonMovieB(null);
+    setPreviewA(false);
+    setPreviewB(false);
+  }, []);
+
+  // 切换预览状态
+  const togglePreviewA = useCallback(() => {
+    setPreviewA(prev => !prev);
+  }, []);
+
+  const togglePreviewB = useCallback(() => {
+    setPreviewB(prev => !prev);
+  }, []);
+
+  // 键盘快捷键支持
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (!showComparison) return;
+      
+      switch (event.key.toLowerCase()) {
+        case 'a':
+          handleComparisonResult('A_WINS');
+          break;
+        case 's':
+          handleComparisonResult('DRAW');
+          break;
+        case 'd':
+          handleComparisonResult('B_WINS');
+          break;
+        case 'q':
+          togglePreviewA(); // Q键切换左侧预览
+          break;
+        case 'e':
+          togglePreviewB(); // E键切换右侧预览
+          break;
+        case 'escape':
+          if (previewA || previewB) {
+            setPreviewA(false); // 关闭所有预览
+            setPreviewB(false);
+          } else {
+            closeComparison(); // 否则关闭对比界面
+          }
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [showComparison, handleComparisonResult, closeComparison, togglePreviewA, togglePreviewB, previewA, previewB]);
+
+  // 获取最新的对比电影数据
+  const currentComparisonMovieA = useMemo(() => {
+    if (!comparisonMovieA) return null;
+    return movies.find(movie => movie.code === comparisonMovieA.code) || comparisonMovieA;
+  }, [movies, comparisonMovieA]);
+
+  const currentComparisonMovieB = useMemo(() => {
+    if (!comparisonMovieB) return null;
+    return movies.find(movie => movie.code === comparisonMovieB.code) || comparisonMovieB;
+  }, [movies, comparisonMovieB]);
+
   // 根据排序模式对电影进行排序
   const sortedAndFilteredMovies = useMemo(() => {
     let currentMovies = [...movies];
@@ -239,6 +486,8 @@ const MoviesPage = () => {
       currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
     } else if (sortMode === "size") {
       currentMovies.sort((a, b) => b.size - a.size);
+    } else if (sortMode === "elo") {
+      currentMovies.sort((a, b) => (b.elo || 1000) - (a.elo || 1000));
     }
     return currentMovies;
   }, [movies, sortMode, searchQuery]); // 添加 searchQuery 到依赖项
@@ -284,6 +533,12 @@ const MoviesPage = () => {
         >
             按大小排序
         </button>
+        <button
+            onClick={() => setSortMode("elo")}
+            className={`px-4 py-2 rounded-md ${sortMode === "elo" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
+        >
+            按评分排序
+        </button>
         {/* 新增刷新按钮 */}
         <button
             onClick={handleRefresh}
@@ -291,6 +546,14 @@ const MoviesPage = () => {
             disabled={loading}
           >
             {loading && !searchQuery ? "加载中..." : "刷新列表"}
+          </button>
+        {/* 对比评分按钮 */}
+        <button
+            onClick={() => startComparison()}
+            className="px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white font-semibold"
+            disabled={loading || movies.length < 2}
+          >
+            🆚 开始评分
           </button>
         </div>
       </div>
@@ -355,6 +618,163 @@ const MoviesPage = () => {
           </div>
         </div>
       )}
+
+      {/* 对比评分弹窗 */}
+      {showComparison && currentComparisonMovieA && currentComparisonMovieB && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg w-full max-w-7xl h-5/6 flex flex-col">
+            
+            {/* 标题栏 */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-700">
+              <h2 className="text-2xl font-bold">🆚 影片对比评分</h2>
+              <div className="flex items-center space-x-4">
+                {(previewA || previewB) && (
+                  <span className="text-sm text-gray-400">
+                    正在预览: {previewA && previewB ? '双侧' : previewA ? '左侧' : '右侧'}影片
+                  </span>
+                )}
+                <button onClick={closeComparison} className="text-gray-400 hover:text-white text-2xl">✕</button>
+              </div>
+            </div>
+            
+            {/* 主要对比区域 */}
+            <div className="flex-1 flex">
+              {/* 左侧影片A */}
+              <div className="w-1/2 p-4 border-r border-gray-700">
+                <div className="h-full flex flex-col">
+                  <div className="text-center mb-4">
+                    <h3 className="text-xl font-bold mb-2">{currentComparisonMovieA.displayTitle || currentComparisonMovieA.title}</h3>
+                    <div className="text-sm text-gray-400 space-y-1">
+                      {currentComparisonMovieA.code && <div>番号: {currentComparisonMovieA.code}</div>}
+                      {currentComparisonMovieA.actress && <div>女优: {currentComparisonMovieA.actress}</div>}
+                      <div>Elo: <span className="text-yellow-400 font-bold">{currentComparisonMovieA.elo || 1000}</span></div>
+                      <div>胜率: {currentComparisonMovieA.winRate ? `${(currentComparisonMovieA.winRate * 100).toFixed(1)}%` : 'N/A'}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex items-center justify-center">
+                    {previewA ? (
+                      <div className="w-full h-full flex items-center justify-center bg-black rounded-lg">
+                        <VideoPlayer
+                          src={`/api/video/stream?path=${btoa(currentComparisonMovieA.absolutePath)}`}
+                          filepath={currentComparisonMovieA.absolutePath}
+                          filename={currentComparisonMovieA.filename}
+                        />
+                      </div>
+                    ) : (
+                      <img
+                        src={currentComparisonMovieA.coverUrl || "/placeholder-image.svg"}
+                        alt={currentComparisonMovieA.title}
+                        className="max-w-full max-h-full object-contain rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={togglePreviewA}
+                      />
+                    )}
+                  </div>
+                  
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={togglePreviewA}
+                      className={`px-4 py-2 rounded-md text-sm transition-colors ${
+                        previewA 
+                          ? 'bg-red-600 hover:bg-red-700 text-white' 
+                          : 'bg-gray-700 hover:bg-gray-600 text-white'
+                      }`}
+                    >
+                      {previewA ? '🔴 停止预览' : '🎬 预览视频'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* 右侧影片B */}
+              <div className="w-1/2 p-4">
+                <div className="h-full flex flex-col">
+                  <div className="text-center mb-4">
+                    <h3 className="text-xl font-bold mb-2">{currentComparisonMovieB.displayTitle || currentComparisonMovieB.title}</h3>
+                    <div className="text-sm text-gray-400 space-y-1">
+                      {currentComparisonMovieB.code && <div>番号: {currentComparisonMovieB.code}</div>}
+                      {currentComparisonMovieB.actress && <div>女优: {currentComparisonMovieB.actress}</div>}
+                      <div>Elo: <span className="text-yellow-400 font-bold">{currentComparisonMovieB.elo || 1000}</span></div>
+                      <div>胜率: {currentComparisonMovieB.winRate ? `${(currentComparisonMovieB.winRate * 100).toFixed(1)}%` : 'N/A'}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex items-center justify-center">
+                    {previewB ? (
+                      <div className="w-full h-full flex items-center justify-center bg-black rounded-lg">
+                        <VideoPlayer
+                          src={`/api/video/stream?path=${btoa(currentComparisonMovieB.absolutePath)}`}
+                          filepath={currentComparisonMovieB.absolutePath}
+                          filename={currentComparisonMovieB.filename}
+                        />
+                      </div>
+                    ) : (
+                      <img
+                        src={currentComparisonMovieB.coverUrl || "/placeholder-image.svg"}
+                        alt={currentComparisonMovieB.title}
+                        className="max-w-full max-h-full object-contain rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={togglePreviewB}
+                      />
+                    )}
+                  </div>
+                  
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={togglePreviewB}
+                      className={`px-4 py-2 rounded-md text-sm transition-colors ${
+                        previewB 
+                          ? 'bg-red-600 hover:bg-red-700 text-white' 
+                          : 'bg-gray-700 hover:bg-gray-600 text-white'
+                      }`}
+                    >
+                      {previewB ? '🔴 停止预览' : '🎬 预览视频'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 底部选择按钮 */}
+            <div className="p-6 border-t border-gray-700">
+              <div className="flex justify-center space-x-6">
+                <button
+                  onClick={() => handleComparisonResult('A_WINS')}
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-semibold transition-colors"
+                >
+                  ← 左侧更好
+                  <div className="text-sm opacity-75">按 A 键</div>
+                </button>
+                
+                <button
+                  onClick={() => handleComparisonResult('DRAW')}
+                  className="px-8 py-3 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-lg font-semibold transition-colors"
+                >
+                  🤝 难分高下
+                  <div className="text-sm opacity-75">按 S 键</div>
+                </button>
+                
+                <button
+                  onClick={() => handleComparisonResult('B_WINS')}
+                  className="px-8 py-3 bg-green-600 hover:bg-green-700 rounded-lg text-lg font-semibold transition-colors"
+                >
+                  右侧更好 →
+                  <div className="text-sm opacity-75">按 D 键</div>
+                </button>
+              </div>
+              
+              <div className="mt-4 text-center text-sm text-gray-400 space-y-1">
+                <div>
+                  <span className="font-semibold">评分快捷键:</span> A(左侧更好) | S(难分高下) | D(右侧更好)
+                </div>
+                <div>
+                  <span className="font-semibold">预览快捷键:</span> Q(预览左侧) | E(预览右侧) | ESC(关闭预览/退出)
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

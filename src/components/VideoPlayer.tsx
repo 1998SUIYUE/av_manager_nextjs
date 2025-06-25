@@ -51,7 +51,16 @@ async function detectCodec(videoSrc: string): Promise<string> {
     tempVideo.style.display = 'none';
     document.body.appendChild(tempVideo);
     
+    // 添加标记以防止重复处理
+    let isResolved = false;
+    
     return new Promise((resolve) => {
+      const safeResolve = (value: string) => {
+        if (!isResolved) {
+          isResolved = true;
+          resolve(value);
+        }
+      };
       // 设置元数据加载处理
       tempVideo.onloadedmetadata = async () => {
         try {
@@ -105,19 +114,24 @@ async function detectCodec(videoSrc: string): Promise<string> {
             }
           }
           
-          resolve(codecInfo);
+          safeResolve(codecInfo);
         } catch (err) {
           console.error("编解码器检测错误:", err);
-          resolve("未知 (检测出错)");
+          safeResolve("未知 (检测出错)");
         } finally {
-          // 清理临时元素
-          document.body.removeChild(tempVideo);
+          // 清理临时元素 - 安全移除
+          if (document.body.contains(tempVideo)) {
+            document.body.removeChild(tempVideo);
+          }
         }
       };
       
       tempVideo.onerror = () => {
-        document.body.removeChild(tempVideo);
-        resolve("未知 (加载失败)");
+        // 安全移除临时元素
+        if (document.body.contains(tempVideo)) {
+          document.body.removeChild(tempVideo);
+        }
+        safeResolve("未知 (加载失败)");
       };
       
       // 设置源并加载
@@ -128,8 +142,8 @@ async function detectCodec(videoSrc: string): Promise<string> {
       setTimeout(() => {
         if (document.body.contains(tempVideo)) {
           document.body.removeChild(tempVideo);
-          resolve("未知 (检测超时)");
         }
+        safeResolve("未知 (检测超时)");
       }, 3000);
     });
   } catch (error) {

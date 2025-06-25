@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-import fsSync from 'fs';
+// import fsSync from 'fs'; // 移除此行
 import path from 'path';
 import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@/utils/logger';
 
@@ -10,6 +10,14 @@ export interface MovieMetadata {
   title: string | null; // 电影标题
   actress: string | null; // 女优名字
   lastUpdated: number; // 最后一次更新时间戳 (毫秒)
+  // Elo评分相关字段
+  elo?: number; // Elo评分 (默认1000)
+  matchCount?: number; // 对比次数
+  winCount?: number; // 胜利次数
+  drawCount?: number; // 平局次数
+  lossCount?: number; // 失败次数
+  lastRated?: number; // 最后评分时间
+  recentMatches?: string[]; // 最近对比过的影片ID (避免重复)
 }
 
 // 缓存文件在项目根目录的绝对路径
@@ -20,7 +28,7 @@ const LOCK_FILE_PATH = CACHE_FILE_PATH + '.lock';
 const LOCK_TIMEOUT = 30000; // 30秒
 
 // 性能优化相关配置
-const READ_CACHE_TTL = 5000; // 读取缓存生存时间：5秒
+// const READ_CACHE_TTL = 5000; // 读取缓存生存时间：5秒 // 移除此行
 const WRITE_BATCH_DELAY = 1000; // 批量写入延迟：1秒
 const WRITE_BATCH_SIZE = 10; // 批量写入大小：10个操作
 const JSON_PRETTY_FORMAT = true; // JSON 格式化：true=可读性优先，false=性能优先
@@ -32,14 +40,8 @@ const MAX_BACKUP_COUNT = 10; // 最大备份文件数量
 const BACKUP_DIR = path.join(process.cwd(), 'cache-backups'); // 备份目录
 const BACKUP_ON_WRITE = true; // 每次写入时是否检查备份需求
 
-// 短期读取缓存，用于减少频繁的磁盘读取
-interface ReadCacheEntry {
-  data: MovieMetadata[];
-  timestamp: number;
-  fileModTime: number; // 文件修改时间，用于检测文件是否被外部修改
-}
-
-let _readCache: ReadCacheEntry | null = null;
+// 禁用短期内存缓存
+// let _readCache: ReadCacheEntry | null = null;
 
 // 批量写入队列
 interface WriteOperation {
@@ -48,6 +50,14 @@ interface WriteOperation {
   title: string | null;
   actress: string | null;
   timestamp: number;
+  // Elo评分相关数据
+  elo?: number;
+  matchCount?: number;
+  winCount?: number;
+  drawCount?: number;
+  lossCount?: number;
+  lastRated?: number;
+  recentMatches?: string[];
 }
 
 let _writeQueue: WriteOperation[] = [];
@@ -210,7 +220,7 @@ async function createBackup(): Promise<boolean> {
     // 检查主缓存文件是否存在
     try {
       await fs.access(CACHE_FILE_PATH);
-    } catch (error) {
+    } catch { // 修改这里，移除 error 变量
       logWithTimestamp('[createBackup] 主缓存文件不存在，跳过备份');
       return false;
     }
@@ -295,7 +305,7 @@ async function restoreFromBackup(): Promise<boolean> {
         logWithTimestamp(`[restoreFromBackup] 从备份恢复成功: ${backup.filename}`);
         
         // 清除读取缓存，强制重新加载
-        _readCache = null;
+        // _readCache = null; // 移除此行
         
         return true;
       } catch (restoreError) {
@@ -336,9 +346,9 @@ async function checkBackupNeeded(): Promise<void> {
  * @returns 对应的电影元数据，如果未找到则返回 null。
  */
 export async function getCachedMovieMetadata(code: string, baseUrl: string): Promise<MovieMetadata | null> {
-  logWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存`);
-  // 1. 直接从磁盘文件中查找
-  const cache = await readCache(); // 每次都从磁盘读取
+  // logWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存（直接从磁盘读取）`);
+  // 1. 直接从磁盘文件中查找（内存缓存已禁用）
+  const cache = await readCache(); // 每次都从磁盘读取最新数据
   const found = cache.find(m => m.code === code);
 
   // 如果找到缓存条目，并且其 coverUrl 仍然是外部链接，则尝试本地化
@@ -369,7 +379,7 @@ export async function getCachedMovieMetadata(code: string, baseUrl: string): Pro
   }
 
   if (found) {
-    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
+    // logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
     return found;
   }
   logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
@@ -383,8 +393,23 @@ export async function getCachedMovieMetadata(code: string, baseUrl: string): Pro
  * @param coverUrl 封面图片URL。
  * @param title 电影标题。
  * @param actress 女优名字。
+ * @param eloData 可选的Elo评分数据。
  */
-export async function updateMovieMetadataCache(code: string, coverUrl: string | null, title: string | null, actress: string | null) {
+export async function updateMovieMetadataCache(
+  code: string, 
+  coverUrl: string | null, 
+  title: string | null, 
+  actress: string | null,
+  eloData?: {
+    elo?: number;
+    matchCount?: number;
+    winCount?: number;
+    drawCount?: number;
+    lossCount?: number;
+    lastRated?: number;
+    recentMatches?: string[];
+  }
+) {
   logWithTimestamp(`[updateMovieMetadataCache] 添加番号 ${code} 到批量写入队列`);
   
   // 添加到批量写入队列
@@ -393,7 +418,17 @@ export async function updateMovieMetadataCache(code: string, coverUrl: string | 
     coverUrl,
     title,
     actress,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    // 添加Elo评分数据
+    ...(eloData && {
+      elo: eloData.elo,
+      matchCount: eloData.matchCount,
+      winCount: eloData.winCount,
+      drawCount: eloData.drawCount,
+      lossCount: eloData.lossCount,
+      lastRated: eloData.lastRated,
+      recentMatches: eloData.recentMatches
+    })
   };
   
   // 移除队列中相同番号的旧操作（保留最新的）
@@ -443,19 +478,36 @@ async function flushWriteQueue() {
     
     // 2. 批量应用所有操作
     for (const operation of operationsToProcess) {
-      const { code, coverUrl, title, actress, timestamp } = operation;
+      const { 
+        code, coverUrl, title, actress, timestamp,
+        elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches
+      } = operation;
       
       const existingIndex = cache.findIndex(m => m.code === code);
       if (existingIndex !== -1) {
-        // 更新现有条目
+        // 更新现有条目，保留现有数据并合并新数据
+        const existing = cache[existingIndex];
         cache[existingIndex] = {
-          code, coverUrl, title, actress, lastUpdated: timestamp
+          code,
+          coverUrl: coverUrl !== undefined ? coverUrl : existing.coverUrl,
+          title: title !== undefined ? title : existing.title,
+          actress: actress !== undefined ? actress : existing.actress,
+          lastUpdated: timestamp,
+          // 更新Elo评分数据
+          elo: elo !== undefined ? elo : existing.elo,
+          matchCount: matchCount !== undefined ? matchCount : existing.matchCount,
+          winCount: winCount !== undefined ? winCount : existing.winCount,
+          drawCount: drawCount !== undefined ? drawCount : existing.drawCount,
+          lossCount: lossCount !== undefined ? lossCount : existing.lossCount,
+          lastRated: lastRated !== undefined ? lastRated : existing.lastRated,
+          recentMatches: recentMatches !== undefined ? recentMatches : existing.recentMatches
         };
         logWithTimestamp(`[flushWriteQueue] 批量更新现有缓存条目: ${code}`);
       } else {
         // 添加新条目到开头
         cache.unshift({
-          code, coverUrl, title, actress, lastUpdated: timestamp
+          code, coverUrl, title, actress, lastUpdated: timestamp,
+          elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches
         });
         logWithTimestamp(`[flushWriteQueue] 批量添加新缓存条目: ${code}`);
       }
@@ -466,7 +518,7 @@ async function flushWriteQueue() {
     if (modified) {
       await writeCacheUnsafe(cache);
       // 清除读取缓存，强制下次读取时重新加载
-      _readCache = null;
+      // _readCache = null; // 移除此行
       logWithTimestamp(`[flushWriteQueue] 批量写入完成，共处理 ${operationsToProcess.length} 个操作`);
     }
   });
@@ -486,7 +538,7 @@ export async function forceFlushWriteQueue(): Promise<void> {
  * 清除所有缓存（用于测试或重置）
  */
 export function clearAllCaches(): void {
-  _readCache = null;
+  // _readCache = null; // 内存缓存已禁用，但仍然清除以防万一 // 移除此行
   _writeQueue = [];
   if (_writeTimer) {
     clearTimeout(_writeTimer);
@@ -500,8 +552,8 @@ export function clearAllCaches(): void {
  */
 export function getCacheStats() {
   return {
-    readCacheActive: _readCache !== null,
-    readCacheAge: _readCache ? Date.now() - _readCache.timestamp : 0,
+    readCacheActive: false, // 内存缓存已禁用
+    readCacheAge: 0, // 内存缓存已禁用
     writeQueueSize: _writeQueue.length,
     writeTimerActive: _writeTimer !== null,
     lastBackupTime: _lastBackupTime,
@@ -542,7 +594,7 @@ export async function restoreFromBackupManual(backupFilename?: string): Promise<
       await fs.copyFile(backupPath, CACHE_FILE_PATH);
       
       // 清除读取缓存
-      _readCache = null;
+      // _readCache = null; // 移除此行
       
       logWithTimestamp(`[restoreFromBackupManual] 从指定备份恢复成功: ${backupFilename}`);
       return true;
@@ -621,47 +673,18 @@ if (BACKUP_ENABLED) {
 }
 
 /**
- * 从磁盘读取电影元数据缓存文件（带性能优化的版本）。
- * 使用短期内存缓存减少频繁的磁盘读取，同时检测文件修改。
+ * 从磁盘读取电影元数据缓存文件。
+ * 已禁用短期内存缓存，每次都从磁盘读取最新数据。
  * @returns 电影元数据数组。
  */
 async function readCache(): Promise<MovieMetadata[]> {
-  const now = Date.now();
+  // logWithTimestamp('[readCache] 从磁盘读取最新数据（已禁用内存缓存）');
   
-  // 检查是否有有效的读取缓存
-  if (_readCache && (now - _readCache.timestamp) < READ_CACHE_TTL) {
-    try {
-      // 检查文件是否被外部修改
-      const stat = await fs.stat(CACHE_FILE_PATH);
-      if (stat.mtimeMs === _readCache.fileModTime) {
-        logWithTimestamp(`[readCache] 使用内存缓存 (${Math.round((now - _readCache.timestamp) / 1000)}s ago)`);
-        return _readCache.data;
-      } else {
-        logWithTimestamp('[readCache] 检测到文件被外部修改，清除缓存');
-        _readCache = null;
-      }
-    } catch (error) {
-      // 文件不存在或其他错误，清除缓存
-      _readCache = null;
-    }
-  }
-  
-  // 缓存失效或不存在，从磁盘读取
+  // 直接从磁盘读取，不使用内存缓存
   const data = await readCacheUnsafe();
   
-  // 更新读取缓存
-  try {
-    const stat = await fs.stat(CACHE_FILE_PATH);
-    _readCache = {
-      data: [...data], // 创建副本避免外部修改
-      timestamp: now,
-      fileModTime: stat.mtimeMs
-    };
-    logWithTimestamp(`[readCache] 更新内存缓存，包含 ${data.length} 条记录`);
-  } catch (error) {
-    // 文件不存在时不创建缓存
-    logWithTimestamp('[readCache] 文件不存在，不创建内存缓存');
-  }
+  // 不再更新内存缓存
+  // _readCache = null; // 确保不使用缓存
   
   return data;
 }
@@ -670,10 +693,11 @@ async function readCache(): Promise<MovieMetadata[]> {
  * 从磁盘读取电影元数据缓存文件（不带锁的内部函数）。
  * 每次调用都直接从磁盘文件读取，不使用内存缓存。
  * 注意：此函数不使用文件锁，仅供内部在已获取锁的情况下使用。
+ * 注意：内存缓存已禁用，每次都从磁盘读取最新数据。
  * @returns 电影元数据数组。
  */
 async function readCacheUnsafe(): Promise<MovieMetadata[]> {
-  logWithTimestamp('[readCache] 从磁盘文件读取缓存数据');
+  // logWithTimestamp('[readCache] 从磁盘文件读取缓存数据');
   try {
     const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
     if (!cacheContent || cacheContent.trim() === '') {
@@ -689,7 +713,7 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
       // 解析 JSON 内容并返回
       try {
         const cache = JSON.parse(cacheContent);
-        logWithTimestamp(`[readCache] 从文件成功读取 ${cache.length} 条缓存记录`);
+        // logWithTimestamp(`[readCache] 从文件成功读取 ${cache.length} 条缓存记录`);
         return cache;
       } catch (parseError) {
         // JSON 解析失败，可能文件损坏，尝试从备份恢复
@@ -766,12 +790,12 @@ async function writeCacheUnsafe(cache: MovieMetadata[]) {
     if (BACKUP_ON_WRITE) {
       await checkBackupNeeded();
     }
-  } catch (error) {
-    errorWithTimestamp('[writeCache] 写入缓存文件失败:', error);
+  } catch { // 修改这里，移除 _ 变量
+    errorWithTimestamp('[writeCache] 写入缓存文件失败:');
     // 尝试清理临时文件
     try {
       await fs.unlink(tmpFile);
-    } catch (cleanupError) {
+    } catch { // 修改这里，移除 _ 变量
       // 忽略清理错误
     }
   }

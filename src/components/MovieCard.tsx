@@ -15,6 +15,13 @@ interface MovieCardProps {
     coverUrl?: string | null;
     displayTitle?: string;
     actress?: string | null;
+    // Elo评分相关字段
+    elo?: number;
+    matchCount?: number;
+    winCount?: number;
+    drawCount?: number;
+    lossCount?: number;
+    winRate?: number;
   };
   formatFileSize: (bytes: number) => string;
   onMovieClick: (absolutePath: string) => void;
@@ -40,6 +47,17 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
         </h3>
         {movie.code && <p className="text-sm text-gray-300">番号: {movie.code}</p>}
         {movie.actress && <p className="text-sm text-gray-300">女优: {movie.actress}</p>}
+        {/* 显示Elo评分信息 */}
+        {movie.elo && movie.elo !== 1000 && (
+          <div className="flex items-center space-x-2 text-sm">
+            <span className="text-yellow-400 font-bold">Elo: {movie.elo}</span>
+            {movie.matchCount && movie.matchCount > 0 && (
+              <span className="text-gray-300">
+                ({movie.winCount || 0}胜 {movie.drawCount || 0}平 {movie.lossCount || 0}负)
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-sm text-gray-300">大小: {formatFileSize(movie.size)}</p>
         <p className="text-sm text-gray-300">修改时间: {new Date(movie.modifiedAt).toLocaleDateString()}</p>
       </div>
