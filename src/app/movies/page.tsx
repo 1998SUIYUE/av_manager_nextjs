@@ -28,6 +28,8 @@ interface MovieData {
   drawCount?: number; // 平局次数
   lossCount?: number; // 失败次数
   winRate?: number; // 胜率
+  lastRated?: number; // 最后评分时间
+  recentMatches?: string[]; // 最近对比过的影片ID (避免重复)
 }
 
 // 定义排序模式的类型
@@ -252,34 +254,35 @@ const MoviesPage = () => {
     logWithTimestamp(`[startComparison] 当前评分统计: ${ratedMoviesCount}/${totalMoviesCount} 部影片已评分 (${ratedPercentage.toFixed(1)}%)`);
     
     // 智能选择算法
-    let movieA, movieB;
+    let selectedMovieA: MovieData;
+    let selectedMovieB: MovieData;
     
     // 1. 首先尝试选择一部未评分的影片作为A
     const unratedMovies = availableMovies.filter(movie => !movie.matchCount || movie.matchCount === 0);
     
     if (unratedMovies.length > 0) {
       // 如果有未评分的影片，优先选择一部作为A
-      movieA = unratedMovies[Math.floor(Math.random() * unratedMovies.length)];
-      logWithTimestamp(`[startComparison] 选择了未评分的影片A: ${movieA.code}`);
+      selectedMovieA = unratedMovies[Math.floor(Math.random() * unratedMovies.length)];
+      logWithTimestamp(`[startComparison] 选择了未评分的影片A: ${selectedMovieA.code}`);
       
       // 对于B，我们有50%的概率选择另一部未评分的影片，50%的概率选择已评分的影片
-      const otherUnratedMovies = unratedMovies.filter(m => m.code !== movieA.code);
+      const otherUnratedMovies = unratedMovies.filter(m => m.code !== selectedMovieA.code);
       const ratedMovies = availableMovies.filter(movie => movie.matchCount && movie.matchCount > 0);
       
       if (otherUnratedMovies.length > 0 && (ratedMovies.length === 0 || Math.random() < 0.5)) {
         // 选择另一部未评分的影片
-        movieB = otherUnratedMovies[Math.floor(Math.random() * otherUnratedMovies.length)];
-        logWithTimestamp(`[startComparison] 选择了未评分的影片B: ${movieB.code}`);
+        selectedMovieB = otherUnratedMovies[Math.floor(Math.random() * otherUnratedMovies.length)];
+        logWithTimestamp(`[startComparison] 选择了未评分的影片B: ${selectedMovieB.code}`);
       } else if (ratedMovies.length > 0) {
         // 选择一部已评分的影片
-        movieB = ratedMovies[Math.floor(Math.random() * ratedMovies.length)];
-        logWithTimestamp(`[startComparison] 选择了已评分的影片B: ${movieB.code} (已进行${movieB.matchCount}次评分)`);
+        selectedMovieB = ratedMovies[Math.floor(Math.random() * ratedMovies.length)];
+        logWithTimestamp(`[startComparison] 选择了已评分的影片B: ${selectedMovieB.code} (已进行${selectedMovieB.matchCount}次评分)`);
       } else {
         // 如果没有其他未评分的影片，随机选择一部不同的影片
         do {
-          movieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
-        } while (movieB.code === movieA.code);
-        logWithTimestamp(`[startComparison] 随机选择了影片B: ${movieB.code}`);
+          selectedMovieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
+        } while (selectedMovieB.code === selectedMovieA.code);
+        logWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
       }
     } else {
       // 2. 如果所有影片都已评分，则选择评分次数最少的影片作为A
@@ -289,29 +292,29 @@ const MoviesPage = () => {
       const leastRatedCount = Math.max(1, Math.ceil(availableMovies.length * 0.2));
       const leastRatedMovies = availableMovies.slice(0, leastRatedCount);
       
-      movieA = leastRatedMovies[Math.floor(Math.random() * leastRatedMovies.length)];
-      logWithTimestamp(`[startComparison] 所有影片都已评分，选择了评分次数较少的影片A: ${movieA.code} (已进行${movieA.matchCount}次评分)`);
+      selectedMovieA = leastRatedMovies[Math.floor(Math.random() * leastRatedMovies.length)];
+      logWithTimestamp(`[startComparison] 所有影片都已评分，选择了评分次数较少的影片A: ${selectedMovieA.code} (已进行${selectedMovieA.matchCount}次评分)`);
       
       // 对于B，避免选择最近已经与A对比过的影片
-      const recentMatches = movieA.recentMatches || [];
+      const recentMatches = selectedMovieA.recentMatches || [];
       const availableForB = availableMovies.filter(m => 
-        m.code !== movieA.code && !recentMatches.includes(m.code)
+        m.code !== selectedMovieA.code && !recentMatches.includes(m.code!)
       );
       
       if (availableForB.length > 0) {
-        movieB = availableForB[Math.floor(Math.random() * availableForB.length)];
-        logWithTimestamp(`[startComparison] 选择了未在最近与A对比过的影片B: ${movieB.code}`);
+        selectedMovieB = availableForB[Math.floor(Math.random() * availableForB.length)];
+        logWithTimestamp(`[startComparison] 选择了未在最近与A对比过的影片B: ${selectedMovieB.code}`);
       } else {
         // 如果所有影片都与A对比过，随机选择一部不同的影片
         do {
-          movieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
-        } while (movieB.code === movieA.code);
-        logWithTimestamp(`[startComparison] 随机选择了影片B: ${movieB.code}`);
+          selectedMovieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
+        } while (selectedMovieB.code === selectedMovieA.code);
+        logWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
       }
     }
     
-    setComparisonMovieA(movieA);
-    setComparisonMovieB(movieB);
+    setComparisonMovieA(selectedMovieA);
+    setComparisonMovieB(selectedMovieB);
     setShowComparison(true);
     // 重置预览状态
     setPreviewA(false);

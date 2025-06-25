@@ -98,9 +98,16 @@ async function updateRatingsAsync(
   ratingA: EloRatingData,
   ratingB: EloRatingData,
   changeA: number,
-  changeB: number
+  changeB: number,
+  baseUrl: string
 ): Promise<void> {
   try {
+    // 获取影片A和B的最新完整元数据，以保留非Elo相关信息
+    const [currentMetadataA, currentMetadataB] = await Promise.all([
+      getCachedMovieMetadata(movieACode, baseUrl),
+      getCachedMovieMetadata(movieBCode, baseUrl)
+    ]);
+
     // 更新影片A的数据
     const newRatingA: EloRatingData = {
       elo: ratingA.elo + changeA,
@@ -127,9 +134,9 @@ async function updateRatingsAsync(
     await Promise.all([
       updateMovieMetadataCache(
         movieACode,
-        null, // 不修改coverUrl
-        null, // 不修改title
-        null, // 不修改actress
+        currentMetadataA?.coverUrl || null, // 使用现有coverUrl，如果不存在则为null
+        currentMetadataA?.title || null,    // 使用现有title，如果不存在则为null
+        currentMetadataA?.actress || null,  // 使用现有actress，如果不存在则为null
         {
           elo: newRatingA.elo,
           matchCount: newRatingA.matchCount,
@@ -142,9 +149,9 @@ async function updateRatingsAsync(
       ),
       updateMovieMetadataCache(
         movieBCode,
-        null, // 不修改coverUrl
-        null, // 不修改title
-        null, // 不修改actress
+        currentMetadataB?.coverUrl || null, // 使用现有coverUrl，如果不存在则为null
+        currentMetadataB?.title || null,    // 使用现有title，如果不存在则为null
+        currentMetadataB?.actress || null,  // 使用现有actress，如果不存在则为null
         {
           elo: newRatingB.elo,
           matchCount: newRatingB.matchCount,
@@ -212,7 +219,8 @@ export async function POST(request: Request) {
       ratingA,
       ratingB,
       changeA,
-      changeB
+      changeB,
+      baseUrl
     ).catch(error => {
       errorWithTimestamp("[POST /api/movies/rating] 异步更新评分数据失败:", error);
     });

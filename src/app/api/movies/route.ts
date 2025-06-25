@@ -84,6 +84,7 @@ function parseMovieFilename(filename: string): {
 async function fetchCoverUrl(code: string, baseUrl: string) {
   // 1. 首先检查本地电影元数据缓存
   const cachedMetadata = await getCachedMovieMetadata(code, baseUrl);
+  
   if (cachedMetadata) {
     // 如果缓存命中，并且有封面URL，直接返回缓存数据，避免网络请求
     if (cachedMetadata.coverUrl && cachedMetadata.title) {
@@ -97,11 +98,10 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         actress: cachedMetadata.actress,
       };
     }
-    
     // 如果缓存中没有封面URL，则继续执行网络请求获取
     logWithTimestamp(`[fetchCoverUrl] 番号 ${code} 在缓存中找到，但缺少封面URL，将尝试从网络获取`);
   }
-
+  logWithTimestamp(`未获取到的cachaedmetadata ${code} `)
   // 2. 如果缓存未命中，启动 Playwright 浏览器进行网页抓取
   let browser = null;
   try {

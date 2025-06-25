@@ -41,7 +41,8 @@ next-env.d.ts
 # cache
 movie-metadata-cache.json
 /public/image-cache
-
+/cache-backups
+movie-metadata-cache.json
 # Added by Task Master AI
 # Logs
 logs

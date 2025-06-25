@@ -42,6 +42,7 @@ function createSafeReadableStream(fileStream: fs.ReadStream, logPrefix: string):
                     controller.error(error);
                     controllerClosed = true;
                   } catch (controllerError) {
+                    logWithTimestamp("发生"+controllerError)
                     // 忽略控制器已关闭的错误
                   }
                 }
@@ -83,12 +84,11 @@ export async function GET(
 ) {
   logWithTimestamp('[video API] Received video stream request.'); // 添加日志
   
-  // 添加临时的未捕获异常处理器，专门处理流控制器错误
-  const originalUncaughtExceptionHandler = process.listeners('uncaughtException');
+
   const streamErrorHandler = (error: Error) => {
     if (error.message.includes('Controller is already closed') || 
-        error.message.includes('already closed') ||
-        error.code === 'ERR_INVALID_STATE') {
+        error.message.includes('already closed')
+        ) {
       // 静默处理流控制器错误，只记录到日志
       logWithTimestamp(`[video API] Handled stream controller error: ${error.message}`);
       return; // 不让错误继续传播
