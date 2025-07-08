@@ -596,7 +596,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, []);
 
   return (
-    <div className="relative w-full group">
+    <div className="relative w-full h-full group">
       <video
         preload="auto"
         ref={videoRef}
@@ -605,8 +605,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         controls={controls}
         autoPlay={autoPlay}
         muted={muted}
-        className="w-full max-h-[80vh] bg-black"
-        style={{ maxWidth: "100%" }}
+        className="w-full h-full bg-black object-contain"
+        style={{ maxWidth: "100%", maxHeight: "100%" }}
         crossOrigin="anonymous"
         playsInline // 移动设备内联播放
       >

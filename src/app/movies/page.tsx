@@ -626,8 +626,8 @@ const MoviesPage = () => {
 
       {/* 对比评分弹窗 */}
       {showComparison && currentComparisonMovieA && currentComparisonMovieB && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg w-full max-w-7xl h-5/6 flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
             
             {/* 标题栏 */}
             <div className="flex justify-between items-center p-4 border-b border-gray-700">
@@ -643,28 +643,23 @@ const MoviesPage = () => {
             </div>
             
             {/* 主要对比区域 */}
-            <div className="flex-1 flex">
+            <div className="flex-1 flex overflow-hidden">
               {/* 左侧影片A */}
-              <div className="w-1/2 p-4 border-r border-gray-700">
-                <div className="h-full flex flex-col">
-                  <div className="text-center mb-4">
-                    <h3 className="text-xl font-bold mb-2">{currentComparisonMovieA.displayTitle || currentComparisonMovieA.title}</h3>
-                    <div className="text-sm text-gray-400 space-y-1">
-                      {currentComparisonMovieA.code && <div>番号: {currentComparisonMovieA.code}</div>}
-                      {currentComparisonMovieA.actress && <div>女优: {currentComparisonMovieA.actress}</div>}
-                      <div>Elo: <span className="text-yellow-400 font-bold">{currentComparisonMovieA.elo || 1000}</span></div>
-                      <div>胜率: {currentComparisonMovieA.winRate ? `${(currentComparisonMovieA.winRate * 100).toFixed(1)}%` : 'N/A'}</div>
-                    </div>
-                  </div>
+              <div className="w-1/2 p-4 border-r border-gray-700 flex flex-col overflow-hidden">
+                <div className="flex flex-col h-full">
+
                   
-                  <div className="flex-1 flex items-center justify-center">
+                  {/* 固定大小的预览区域 */}
+                  <div className="w-full h-80 flex items-center justify-center bg-gray-900 rounded-lg flex-shrink-0 relative">
                     {previewA ? (
-                      <div className="w-full h-full flex items-center justify-center bg-black rounded-lg">
-                        <VideoPlayer
-                          src={`/api/video/stream?path=${btoa(currentComparisonMovieA.absolutePath)}`}
-                          filepath={currentComparisonMovieA.absolutePath}
-                          filename={currentComparisonMovieA.filename}
-                        />
+                      <div className="w-full h-full bg-black rounded-lg overflow-hidden">
+                        <div className="w-full h-full">
+                          <VideoPlayer
+                            src={`/api/video/stream?path=${btoa(currentComparisonMovieA.absolutePath)}`}
+                            filepath={currentComparisonMovieA.absolutePath}
+                            filename={currentComparisonMovieA.filename}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <img
@@ -676,42 +671,26 @@ const MoviesPage = () => {
                     )}
                   </div>
                   
-                  <div className="mt-4 text-center">
-                    <button
-                      onClick={togglePreviewA}
-                      className={`px-4 py-2 rounded-md text-sm transition-colors ${
-                        previewA 
-                          ? 'bg-red-600 hover:bg-red-700 text-white' 
-                          : 'bg-gray-700 hover:bg-gray-600 text-white'
-                      }`}
-                    >
-                      {previewA ? '🔴 停止预览' : '🎬 预览视频'}
-                    </button>
-                  </div>
+
                 </div>
               </div>
               
               {/* 右侧影片B */}
-              <div className="w-1/2 p-4">
-                <div className="h-full flex flex-col">
-                  <div className="text-center mb-4">
-                    <h3 className="text-xl font-bold mb-2">{currentComparisonMovieB.displayTitle || currentComparisonMovieB.title}</h3>
-                    <div className="text-sm text-gray-400 space-y-1">
-                      {currentComparisonMovieB.code && <div>番号: {currentComparisonMovieB.code}</div>}
-                      {currentComparisonMovieB.actress && <div>女优: {currentComparisonMovieB.actress}</div>}
-                      <div>Elo: <span className="text-yellow-400 font-bold">{currentComparisonMovieB.elo || 1000}</span></div>
-                      <div>胜率: {currentComparisonMovieB.winRate ? `${(currentComparisonMovieB.winRate * 100).toFixed(1)}%` : 'N/A'}</div>
-                    </div>
-                  </div>
+              <div className="w-1/2 p-4 flex flex-col overflow-hidden">
+                <div className="flex flex-col h-full">
+
                   
-                  <div className="flex-1 flex items-center justify-center">
+                  {/* 固定大小的预览区域 */}
+                  <div className="w-full h-80 flex items-center justify-center bg-gray-900 rounded-lg flex-shrink-0 relative">
                     {previewB ? (
-                      <div className="w-full h-full flex items-center justify-center bg-black rounded-lg">
-                        <VideoPlayer
-                          src={`/api/video/stream?path=${btoa(currentComparisonMovieB.absolutePath)}`}
-                          filepath={currentComparisonMovieB.absolutePath}
-                          filename={currentComparisonMovieB.filename}
-                        />
+                      <div className="w-full h-full bg-black rounded-lg overflow-hidden">
+                        <div className="w-full h-full">
+                          <VideoPlayer
+                            src={`/api/video/stream?path=${btoa(currentComparisonMovieB.absolutePath)}`}
+                            filepath={currentComparisonMovieB.absolutePath}
+                            filename={currentComparisonMovieB.filename}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <img
@@ -723,18 +702,7 @@ const MoviesPage = () => {
                     )}
                   </div>
                   
-                  <div className="mt-4 text-center">
-                    <button
-                      onClick={togglePreviewB}
-                      className={`px-4 py-2 rounded-md text-sm transition-colors ${
-                        previewB 
-                          ? 'bg-red-600 hover:bg-red-700 text-white' 
-                          : 'bg-gray-700 hover:bg-gray-600 text-white'
-                      }`}
-                    >
-                      {previewB ? '🔴 停止预览' : '🎬 预览视频'}
-                    </button>
-                  </div>
+
                 </div>
               </div>
             </div>
