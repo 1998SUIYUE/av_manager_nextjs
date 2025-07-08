@@ -691,7 +691,7 @@ export async function GET(request: Request) {
   try {
     // 从请求的URL中解析参数
     const { searchParams } = new URL(request.url);
-    const fetchAll = searchParams.get('fetch_all') === 'true'; // 检查是否获取所有电影
+    
     
     const baseUrl = new URL(request.url).origin; // 获取请求的协议和域名
     
