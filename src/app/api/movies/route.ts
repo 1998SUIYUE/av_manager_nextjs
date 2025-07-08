@@ -689,11 +689,9 @@ async function storeDirectory(directory: string): Promise<void> {
 export async function GET(request: Request) {
   logWithTimestamp(`[GET] 接收到 GET 请求`);
   try {
-    // 从请求的URL中解析offset和limit参数，用于分页
+    // 从请求的URL中解析参数
     const { searchParams } = new URL(request.url);
-    const offset = parseInt(searchParams.get('offset') || '0', 10); // 默认从0开始
-    const limit = parseInt(searchParams.get('limit') || '50', 10);   // 默认每页50条
-    const fetchAll = searchParams.get('fetch_all') === 'true'; // 新增：检查是否存在 fetch_all 参数
+    const fetchAll = searchParams.get('fetch_all') === 'true'; // 检查是否获取所有电影
     
     const baseUrl = new URL(request.url).origin; // 获取请求的协议和域名
     
@@ -709,24 +707,13 @@ export async function GET(request: Request) {
     // 清理目录路径
     const cleanPath = movieDirectory.replace(/['"]/g, "").replace(/\\/g, "/");
     logWithTimestamp(`[GET] 开始扫描电影目录: ${cleanPath}`);
-    // 扫描电影目录并获取所有原始的电影数据（不处理元数据）
+    // 扫描电影目录并获取所有电影数据
     const allMovieFiles = await scanMovieDirectory(cleanPath, baseUrl);
-    logWithTimestamp(`[GET] 完成原始电影扫描，发现 ${allMovieFiles.length} 个文件`);
+    logWithTimestamp(`[GET] 完成电影扫描，发现 ${allMovieFiles.length} 个文件`);
     
-    let paginatedMovieFiles: MovieFile[];
-    if (fetchAll) {
-      // 如果 fetch_all 为 true，则返回所有电影文件
-      paginatedMovieFiles = allMovieFiles;
-      logWithTimestamp(`[GET] 返回所有 ${allMovieFiles.length} 条电影数据 (fetch_all: true)`);
-    } else {
-      // 否则，按分页返回电影文件
-      paginatedMovieFiles = allMovieFiles.slice(offset, offset + limit);
-      logWithTimestamp(`[GET] 分页获取 ${paginatedMovieFiles.length} 条电影数据 (offset: ${offset}, limit: ${limit})`);
-    }
-
-    // 对当前页面的电影数据进行元数据处理（获取封面等）
-    const processedMovies = await processMovieFiles(paginatedMovieFiles, baseUrl);
-    logWithTimestamp(`[GET] 完成当前页面电影数据处理，返回 ${processedMovies.length} 条电影数据`);
+    // 处理所有电影数据（获取封面等）
+    const processedMovies = await processMovieFiles(allMovieFiles, baseUrl);
+    logWithTimestamp(`[GET] 完成电影数据处理，返回 ${processedMovies.length} 条电影数据`);
 
     // 对 finalMovies 进行额外的检查和警告
     processedMovies.forEach(movie => {
@@ -745,7 +732,7 @@ export async function GET(request: Request) {
     const moviesToSend = processedMovies;
     logWithTimestamp(`[GET /api/movies] 返回 ${moviesToSend.length} 部电影数据。`);
 
-    return NextResponse.json({ movies: moviesToSend, total: allMovieFiles.length });
+    return NextResponse.json({ movies: moviesToSend, total: processedMovies.length });
   } catch (error) {
     errorWithTimestamp("[GET /api/movies] 获取电影列表时发生错误:", error);
     return NextResponse.json(

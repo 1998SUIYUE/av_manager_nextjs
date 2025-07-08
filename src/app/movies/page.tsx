@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
 import { errorWithTimestamp, logWithTimestamp } from "@/utils/logger";
@@ -44,12 +44,7 @@ const MoviesPage = () => {
   const [sortMode, setSortMode] = useState<SortMode>("time"); // 默认按时间排序
   const [searchQuery, setSearchQuery] = useState<string>(""); // 新增：搜索关键词状态
 
-  const [offset, setOffset] = useState(0); // 当前加载的电影数量偏移量
-  const limit = 50; // 每次加载的电影数量
-  const [hasMore, setHasMore] = useState(true); // 是否还有更多电影可以加载
   const [totalMovies, setTotalMovies] = useState(0); // 总电影数量
-
-  const bottomBoundaryRef = useRef<HTMLDivElement>(null); // 用于观察底部边界的引用
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
@@ -72,101 +67,40 @@ const MoviesPage = () => {
     }
   }, [loadingStartTime]);
 
-  const fetchMovies = useCallback(async (currentOffset: number) => {
+  const fetchMovies = useCallback(async () => {
     setLoading(true);
-    if (currentOffset === 0) {
-      setLoadingStartTime(Date.now()); // 仅在首次加载时启动计时器
-      setElapsedLoadingTime(0); // 重置计时器
-    }
+    setLoadingStartTime(Date.now()); // 启动计时器
+    setElapsedLoadingTime(0); // 重置计时器
     setError(null);
+    
     try {
-      let apiUrl = `/api/movies`;
-      if (searchQuery) {
-        // 如果有搜索关键词，获取所有电影
-        apiUrl = `/api/movies?fetch_all=true`;
-        // 注意：不在这里清空movies，因为这会导致重复清空
-      } else {
-        // 否则进行分页加载
-        apiUrl = `/api/movies?offset=${currentOffset}&limit=${limit}`;
-      }
-
+      // 始终获取所有电影
+      const apiUrl = `/api/movies?fetch_all=true`;
       const response = await fetch(apiUrl);
-        if (!response.ok) {
+      
+      if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-
-      if (searchQuery) {
-        // 如果是搜索结果，直接替换电影列表
-        setMovies(data.movies);
-        setHasMore(false); // 搜索结果不分页，所以没有更多
-      } else {
-        // 否则根据偏移量决定是替换还是追加
-        if (currentOffset === 0) {
-          // 如果是从头开始加载，直接替换
-          setMovies(data.movies);
-        } else {
-          // 否则追加电影列表
-          setMovies((prevMovies) => {
-            const newMovies = data.movies.filter(
-              (newMovie: MovieData) =>
-                !prevMovies.some(
-                  (prevMovie) => prevMovie.absolutePath === newMovie.absolutePath
-                )
-            );
-            return [...prevMovies, ...newMovies];
-          });
-        }
-        setHasMore(data.movies.length === limit); // 如果返回的数量小于limit，说明没有更多了
       }
+      
+      const data = await response.json();
+      
+      // 直接设置所有电影
+      setMovies(data.movies);
       setTotalMovies(data.total);
+      
     } catch (e: unknown) {
-      errorWithTimestamp("Error fetching movies:", e); // 使用导入的日志工具
+      errorWithTimestamp("Error fetching movies:", e);
       setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
-      if (currentOffset === 0) {
-        setLoadingStartTime(null); // 首次加载完成时停止计时器
-      }
+      setLoadingStartTime(null); // 停止计时器
     }
-  }, [limit, searchQuery]); // 添加 searchQuery 到依赖项
+  }, []);
 
   useEffect(() => {
-    // 初始加载或搜索查询变化时加载第一页
-    // 当搜索查询变化时，需要重置状态
-    setMovies([]); // 清空当前列表
-    setOffset(0); // 重置偏移量
-    setHasMore(true); // 重置"还有更多"状态
-    fetchMovies(0);
-  }, [fetchMovies, searchQuery]); // 添加 searchQuery 到依赖项，使其在搜索词变化时重新加载
-
-  // 使用 Intersection Observer 实现无限滚动
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading) {
-          setOffset((prevOffset) => prevOffset + limit);
-        }
-      },
-      { threshold: 0.5 } // 当目标元素完全可见时触发
-    );
-
-    if (bottomBoundaryRef.current) {
-      observer.observe(bottomBoundaryRef.current);
-    }
-
-    return () => {
-      if (bottomBoundaryRef.current) {
-        observer.unobserve(bottomBoundaryRef.current);
-      }
-    };
-  }, [hasMore, loading, limit]); // 依赖项：hasMore, loading, limit
-
-  useEffect(() => {
-    if (offset > 0) {
-      fetchMovies(offset);
-    }
-  }, [offset, fetchMovies]);
+    // 初始加载
+    fetchMovies();
+  }, [fetchMovies]);
 
   // 处理电影卡片点击事件
   const handleMovieClick = useCallback((absolutePath: string) => {
@@ -180,18 +114,10 @@ const MoviesPage = () => {
     setShowVideoPlayer(false);
   }, []);
 
-  // 新增：处理刷新操作
+  // 处理刷新操作
   const handleRefresh = useCallback(() => {
     logWithTimestamp("[MoviesPage] 用户手动刷新列表");
-    setMovies([]); // 清空当前电影列表
-    setOffset(0); // 重置偏移量
-    setHasMore(true); // 假设还有更多数据，fetchMovies 会纠正这个
-    // fetchMovies(0) 会在 useEffect 中因为 offset 和 movies 变化而被触发，或者我们可以直接调用
-    // 为确保立即执行，并且覆盖搜索状态，我们直接调用并清空搜索查询（如果需要）
-    // 如果希望刷新保留当前搜索词，则不清空 searchQuery
-    // 这里我们假设刷新是全局的，所以清空搜索（如果行为需要不同，可以调整）
-    // setSearchQuery(""); // 可选：如果刷新应清除搜索
-    fetchMovies(0); 
+    fetchMovies(); 
   }, [fetchMovies]);
 
   // 处理电影删除操作
@@ -240,33 +166,8 @@ const MoviesPage = () => {
   const startComparison = useCallback(async () => {
     if (movies.length < 2) return;
     
-    // 检查是否需要加载所有影片用于评分
-    let allMovies = movies;
-    if (movies.length < totalMovies) {
-      try {
-        logWithTimestamp(`[startComparison] 当前已加载 ${movies.length}/${totalMovies} 部影片，正在加载所有影片用于评分...`);
-        
-        const response = await fetch('/api/movies?fetch_all=true');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        allMovies = data.movies;
-        
-        // 更新本地状态以包含所有影片
-        setMovies(allMovies);
-        setTotalMovies(data.total);
-        
-        logWithTimestamp(`[startComparison] 成功加载所有 ${allMovies.length} 部影片用于评分`);
-      } catch (error) {
-        errorWithTimestamp("[startComparison] 加载所有影片失败:", error);
-        alert("加载所有影片失败，将在当前已加载的影片中进行评分");
-        // 如果加载失败，继续使用当前已加载的影片
-      }
-    }
-    
-    // 只选择有番号的影片
-    const availableMovies = allMovies.filter(movie => movie.code);
+    // 直接使用当前已加载的所有影片
+    const availableMovies = movies.filter(movie => movie.code);
     if (availableMovies.length < 2) {
       alert("需要至少2部有番号的影片才能进行对比评分");
       return;
@@ -574,7 +475,7 @@ const MoviesPage = () => {
             className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white"
             disabled={loading}
           >
-            {loading && !searchQuery ? "加载中..." : "刷新列表"}
+            {loading ? "加载中..." : "刷新列表"}
           </button>
         {/* 对比评分按钮 */}
         <button
@@ -583,16 +484,11 @@ const MoviesPage = () => {
             disabled={loading || movies.length < 2}
           >
             🆚 开始评分
-            {movies.length < totalMovies && (
-              <div className="text-xs opacity-75">
-                将加载全部 {totalMovies} 部影片
-              </div>
-            )}
           </button>
         </div>
       </div>
 
-      {loading && loadingStartTime && !searchQuery && (
+      {loading && loadingStartTime && (
         <p className="text-center text-xl mb-4">
           加载中... 已用时: {elapsedLoadingTime} 秒
         </p>
@@ -601,8 +497,9 @@ const MoviesPage = () => {
 
       <div className="text-center mb-6">
         <p className="text-lg mb-2">总电影数: {totalMovies}</p>
-        
-
+        {searchQuery && (
+          <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
+        )}
       </div>
 
 
@@ -617,15 +514,6 @@ const MoviesPage = () => {
         ))}
       </div>
 
-      {/* 哨兵元素，用于 Intersection Observer 监测 */}
-      {hasMore && (
-        <div ref={bottomBoundaryRef} style={{ height: '20px', margin: '20px 0' }}></div>
-      )}
-
-      {/* 加载更多提示 (当有更多数据时) */}
-      {loading && hasMore && (
-        <p className="text-center text-xl mt-4">正在加载更多电影...</p>
-      )}
 
       {!loading && movies.length === 0 && !error && (
         <p className="text-center text-xl mt-8">没有找到电影文件。</p>
