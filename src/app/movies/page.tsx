@@ -237,11 +237,36 @@ const MoviesPage = () => {
   }, [fetchMovies]);
 
   // 开始对比评分
-  const startComparison = useCallback(() => {
+  const startComparison = useCallback(async () => {
     if (movies.length < 2) return;
     
+    // 检查是否需要加载所有影片用于评分
+    let allMovies = movies;
+    if (movies.length < totalMovies) {
+      try {
+        logWithTimestamp(`[startComparison] 当前已加载 ${movies.length}/${totalMovies} 部影片，正在加载所有影片用于评分...`);
+        
+        const response = await fetch('/api/movies?fetch_all=true');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        allMovies = data.movies;
+        
+        // 更新本地状态以包含所有影片
+        setMovies(allMovies);
+        setTotalMovies(data.total);
+        
+        logWithTimestamp(`[startComparison] 成功加载所有 ${allMovies.length} 部影片用于评分`);
+      } catch (error) {
+        errorWithTimestamp("[startComparison] 加载所有影片失败:", error);
+        alert("加载所有影片失败，将在当前已加载的影片中进行评分");
+        // 如果加载失败，继续使用当前已加载的影片
+      }
+    }
+    
     // 只选择有番号的影片
-    const availableMovies = movies.filter(movie => movie.code);
+    const availableMovies = allMovies.filter(movie => movie.code);
     if (availableMovies.length < 2) {
       alert("需要至少2部有番号的影片才能进行对比评分");
       return;
@@ -328,7 +353,7 @@ const MoviesPage = () => {
     } else {
       logWithTimestamp(`[startComparison] 评分进度: 所有影片都已至少评分一次`);
     }
-  }, [movies]);
+  }, [movies, totalMovies]);
 
   // 处理对比结果
   const handleComparisonResult = useCallback(async (result: 'A_WINS' | 'B_WINS' | 'DRAW') => {
@@ -558,6 +583,11 @@ const MoviesPage = () => {
             disabled={loading || movies.length < 2}
           >
             🆚 开始评分
+            {movies.length < totalMovies && (
+              <div className="text-xs opacity-75">
+                将加载全部 {totalMovies} 部影片
+              </div>
+            )}
           </button>
         </div>
       </div>
@@ -569,7 +599,11 @@ const MoviesPage = () => {
       )}
       {error && <p className="text-center text-red-500 mb-4">错误: {error}</p>}
 
-      <p className="text-center text-lg mb-4">总电影数: {totalMovies}</p>
+      <div className="text-center mb-6">
+        <p className="text-lg mb-2">总电影数: {totalMovies}</p>
+        
+
+      </div>
 
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -631,7 +665,19 @@ const MoviesPage = () => {
             
             {/* 标题栏 */}
             <div className="flex justify-between items-center p-4 border-b border-gray-700">
-              <h2 className="text-2xl font-bold">🆚 影片对比评分</h2>
+              <div className="flex items-center space-x-4">
+                <h2 className="text-2xl font-bold">🆚 影片对比评分</h2>
+                <div className="text-sm bg-gray-700 px-3 py-1 rounded">
+                  <span className="text-gray-300">未评分:</span>
+                  <span className="text-red-400 font-bold ml-1">
+                    {movies.filter(movie => movie.code && (!movie.matchCount || movie.matchCount === 0)).length}
+                  </span>
+                  <span className="text-gray-400 mx-1">/</span>
+                  <span className="text-blue-400 font-bold">
+                    {movies.filter(movie => movie.code).length}
+                  </span>
+                </div>
+              </div>
               <div className="flex items-center space-x-4">
                 {(previewA || previewB) && (
                   <span className="text-sm text-gray-400">

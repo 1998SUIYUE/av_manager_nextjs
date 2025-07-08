@@ -745,7 +745,7 @@ export async function GET(request: Request) {
     const moviesToSend = processedMovies;
     logWithTimestamp(`[GET /api/movies] 返回 ${moviesToSend.length} 部电影数据。`);
 
-    return NextResponse.json({ movies: moviesToSend, total: moviesToSend.length });
+    return NextResponse.json({ movies: moviesToSend, total: allMovieFiles.length });
   } catch (error) {
     errorWithTimestamp("[GET /api/movies] 获取电影列表时发生错误:", error);
     return NextResponse.json(
