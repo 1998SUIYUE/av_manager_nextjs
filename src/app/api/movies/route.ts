@@ -689,8 +689,7 @@ async function storeDirectory(directory: string): Promise<void> {
 export async function GET(request: Request) {
   logWithTimestamp(`[GET] 接收到 GET 请求`);
   try {
-    // 从请求的URL中解析参数
-    const { searchParams } = new URL(request.url);
+    
     
     
     const baseUrl = new URL(request.url).origin; // 获取请求的协议和域名
