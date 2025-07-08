@@ -1,4 +1,4 @@
-![示例图片](public/exmple.png)
+![示例图片](public/ex.png)
 # 项目名称
 这是一个用于管理电影的 Next.js 应用程序，旨在提供一个用户友好的界面来浏览、搜索和管理电影信息。
 
@@ -28,5 +28,3 @@
 
 ## 注意事项
 第一次打开时会获取电影数据，请耐心等待。
-在网页播放的时候,点击视频左上角的文件名会删除本地文件,这是为了快速删除不喜欢的文件.如果影响你的使用，可以在文件中删除这个功能。
-在my-nextjs-app\src\components\VideoPlayer.tsx搜索onClick={openInExplorer}并注释掉即可
