@@ -59,18 +59,29 @@ function parseMovieFilename(filename: string): {
   // 移除文件扩展名，获取纯文件名
   const nameWithoutExt = path.basename(filename, path.extname(filename));
 
-  // 正则表达式匹配电影番号，例如 'ABC-123' 或 'XYZ-001'
-  const matchResult = nameWithoutExt.match(/([a-zA-Z]{2,5}-\d{2,5})/);
+  // 正则表达式匹配电影番号，例如 'ABC-123' 或 'XYZ-001' (不区分大小写)
+  const matchResult = nameWithoutExt.match(/([a-zA-Z]{2,5}-\d{2,5})/i);
 
-  // 如果找到番号，则用番号作为解析后的标题，否则使用完整文件名
-  const parsedTitle = matchResult ? matchResult[1] : nameWithoutExt;
+  let title = nameWithoutExt; // 默认标题为去除扩展名后的完整文件名
+  let code: string | undefined;
+
+  if (matchResult) {
+    code = matchResult[1].toUpperCase(); // 将番号转换为大写以保持一致性
+    // 如果文件名以番号开头，则从标题中移除番号，以获得更纯净的描述性标题
+    if (title.toLowerCase().startsWith(code.toLowerCase())) {
+        title = title.substring(code.length).trim();
+        // 移除番号后可能留下的分隔符（如 '-' 或 '_'）
+        if (title.startsWith('-') || title.startsWith('_')) {
+            title = title.substring(1).trim();
+        }
+    }
+  }
 
   return {
-    title: parsedTitle,
+    title: title, // 现在是更具描述性的标题
     // 尝试从文件名中匹配年份 (例如: 19XX 或 20XX)
     year: (nameWithoutExt.match(/\b(19\d{2}|20\d{2})\b/) || [])[0],
-    // 如果找到番号，则使用它，否则为 undefined
-    code: matchResult ? matchResult[1] : undefined,
+    code: code, // 番号
   };
 }
 
@@ -87,7 +98,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
   
   if (cachedMetadata) {
     // 如果缓存命中，并且有封面URL，直接返回缓存数据，避免网络请求
-    if (cachedMetadata.coverUrl && cachedMetadata.title) {
+    if (cachedMetadata.coverUrl !==null && cachedMetadata.title !== null) {
       // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code}
       //   coverUrl: ${cachedMetadata.coverUrl},
       //   title: ${cachedMetadata.title},
@@ -101,17 +112,17 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     // 如果缓存中没有封面URL，则继续执行网络请求获取
     logWithTimestamp(`[fetchCoverUrl] 番号 ${code} 在缓存中找到，但缺少封面URL，将尝试从网络获取`);
   }
-  logWithTimestamp(`未获取到的cachaedmetadata ${code} `)
+  logWithTimestamp(`[fetchCoverUrl] 未获取到的cachaedmetadata ${code} `);
   // 2. 如果缓存未命中，启动 Playwright 浏览器进行网页抓取
   let browser = null;
   try {
-    console.log(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
+    logWithTimestamp(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
 
     // 启动无头模式的 Chromium 浏览器
     browser = await chromium.launch({
       headless: true,
     });
-    // console.log(`[fetchCoverUrl] 浏览器启动成功`);
+    // logWithTimestamp(`[fetchCoverUrl] 浏览器启动成功`);
 
     // 创建新的浏览器上下文，并设置用户代理以模拟真实浏览器行为
     const context = await browser.newContext({
@@ -120,11 +131,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     });
     // 创建新页面
     const page = await context.newPage();
-    // console.log(`[fetchCoverUrl] 新页面创建成功`);
+    // logWithTimestamp(`[fetchCoverUrl] 新页面创建成功`);
 
     // 构造 JavDB 搜索 URL
     const url = `https://javdb.com/search?q=${code}&f=all/`;
-    console.log(`[fetchCoverUrl] 开始访问 URL: ${url}`);
+    logWithTimestamp(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
       // 导航到搜索结果页，等待 DOM 内容加载完成
@@ -132,7 +143,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      // console.log(`[fetchCoverUrl] 页面加载完成`);
+      // logWithTimestamp(`[fetchCoverUrl] 页面加载完成`);
 
       // 从搜索结果中提取正确的电影详情页 URL
       const right_url = await page.evaluate(() => {
@@ -148,7 +159,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         waitUntil: "domcontentloaded",
         timeout: 10000,
       });
-      console.log(
+      logWithTimestamp(
         `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
       );
 
@@ -158,63 +169,62 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       ];
       let coverUrl = null;
       for (const selector of coverSelectors) {
-        // console.log(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
+        // logWithTimestamp(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
         coverUrl = await page.evaluate((sel) => {
           const coverLink = document.querySelector(sel);
           return coverLink ? coverLink.getAttribute("src") : null;
         }, selector);
 
         if (coverUrl) {
-          // console.log(
+          // logWithTimestamp(
           //   `[fetchCoverUrl] 使用选择器 ${selector} 找到封面: ${coverUrl}`
           // );
           break; // 找到封面后跳出循环
         } else {
-          // 如果默认选择器未找到封面，则使用备用封面URL
           coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-          console.log(`[error] 选择器 ${selector} 未找到封面 使用missav默认封面https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`);
+          errorWithTimestamp(`[fetchCoverUrl] 选择器 ${selector} 未找到封面，使用MissAV默认封面: ${coverUrl}`);
         }
       }
 
       // 如果成功获取到 coverUrl，则通过 image-proxy 进行本地缓存
       if (coverUrl) {
-        console.log(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
+        logWithTimestamp(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
         try {
           const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`;
-          console.log(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
+          logWithTimestamp(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
           const imageProxyResponse = await fetch(proxyApiUrl);
           if (imageProxyResponse.ok) {
             const proxyData = await imageProxyResponse.json();
             const localCoverUrl = proxyData.imageUrl;
-            console.log(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
+            logWithTimestamp(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
             coverUrl = localCoverUrl; // 更新 coverUrl 为本地路径
           } else {
-            console.log(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+            warnWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
             // 如果代理失败，可以考虑使用默认图片或者保留原始URL
           }
         } catch (proxyError) {
-          console.log(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
+          errorWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
         }
       }
 
       // 获取电影标题
       const titleSelectors = [
-        `body > section > div > div.video-detail > h2 > strong.current-title`,
+        `body > section.section > div > div.video-detail > h2 > strong.current-title`,
       ];
       let title = null;
       for (const selector of titleSelectors) {
-        // console.log(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
+        // logWithTimestamp(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
         title = await page.evaluate((sel) => {
           const titleElement = document.querySelector(sel);
           return titleElement ? titleElement.textContent?.trim() || null : null;
         }, selector);
         if (title && title !== "null") {
-          // console.log(
+          // logWithTimestamp(
           //   `[fetchCoverUrl] 使用选择器 ${selector} 找到标题: ${title}`
           // );
           break; // 找到标题后跳出循环
         } else {
-          console.log(`[error] 选择器 ${selector} 未找到标题`);
+          warnWithTimestamp(`[fetchCoverUrl] 选择器 ${selector} 未找到标题`);
         }
       }
 
@@ -236,12 +246,12 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
       // 无论是否获取到标题，只要有封面URL或者女优信息，都更新本地缓存
       if (coverUrl || title || actress) {
-        console.log(
+        logWithTimestamp(
           `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
         );
         await updateMovieMetadataCache(code, coverUrl, title, actress);
       } else {
-        console.log(`[error] 番号 ${code} 处理失败 - 未获取到任何元数据`);
+        warnWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理失败 - 未获取到任何元数据`);
       }
 
       return {
@@ -250,11 +260,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         actress,
       };
     } catch (navigationError) {
-      console.log(`[fetchCoverUrl] 页面导航错误:`, navigationError);
+      logWithTimestamp(`[fetchCoverUrl] 页面导航错误:`, navigationError);
       
       // 即使导航出错，也尝试使用备用封面URL
       const backupCoverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-      console.log(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
+      logWithTimestamp(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
       
       // 尝试通过image-proxy缓存备用封面
       try {
@@ -263,27 +273,27 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         if (imageProxyResponse.ok) {
           const proxyData = await imageProxyResponse.json();
           const localCoverUrl = proxyData.imageUrl;
-          console.log(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
+          logWithTimestamp(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
           
           // 更新缓存，保存备用封面
           await updateMovieMetadataCache(code, localCoverUrl, null, null);
           return { coverUrl: localCoverUrl, title: null, actress: null };
         }
       } catch (proxyError) {
-        console.log(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
+        errorWithTimestamp(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
       }
       
       return { coverUrl: null, title: null, actress: null };
     }
   } catch (error) {
-    console.log(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
+    logWithTimestamp(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
     if (browser) {
       await browser.close();
     }
     
     // 即使出错，也尝试使用备用封面URL
     const backupCoverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-    console.log(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
+    logWithTimestamp(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
     
     // 尝试通过image-proxy缓存备用封面
     try {
@@ -292,14 +302,14 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       if (imageProxyResponse.ok) {
         const proxyData = await imageProxyResponse.json();
         const localCoverUrl = proxyData.imageUrl;
-        console.log(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
+        logWithTimestamp(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
         
         // 更新缓存，保存备用封面
         await updateMovieMetadataCache(code, localCoverUrl, null, null);
         return { coverUrl: localCoverUrl, title: null, actress: null };
       }
     } catch (proxyError) {
-      console.log(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
+      errorWithTimestamp(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
     }
     
     return { coverUrl: null, title: null, actress: null };
@@ -425,15 +435,15 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   
   // 打印重复文件信息
   if (duplicateMovies.length > 0) {
-    console.log("检测到重复文件:");
+    logWithTimestamp("检测到重复文件:");
     duplicateMovies.forEach((movie) => {
-      console.log(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
+      logWithTimestamp(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
     });
-    console.log(`总共检测到 ${duplicateMovies.length} 个重复文件`);
+    logWithTimestamp(`总共检测到 ${duplicateMovies.length} 个重复文件`);
   } else {
-    console.log("没有检测到重复文件");
+    logWithTimestamp("没有检测到重复文件");
   }
-  console.log(
+  logWithTimestamp(
     "项目路径: https://localhost:3000"
   );
   return processedMovies;
@@ -718,15 +728,28 @@ export async function GET(request: Request) {
     const processedMovies = await processMovieFiles(paginatedMovieFiles, baseUrl);
     logWithTimestamp(`[GET] 完成当前页面电影数据处理，返回 ${processedMovies.length} 条电影数据`);
 
-    // 将处理后的电影数据和总数作为 JSON 响应返回
-    return NextResponse.json({
-      movies: processedMovies,
-      total: allMovieFiles.length,
+    // 对 finalMovies 进行额外的检查和警告
+    processedMovies.forEach(movie => {
+      if (movie.code) {
+        // 检查标题是否仍然只是番号
+        if (movie.title.toLowerCase() === movie.code.toLowerCase()) {
+          warnWithTimestamp(`[GET /api/movies] 警告: 电影 ${movie.filename} (番号: ${movie.code}) 缺少描述性标题。请检查JavDB抓取是否成功或文件名是否包含描述性信息。`);
+        }
+      }
+      // 检查女优是否缺失或为"unknow"
+      if (!movie.actress || movie.actress.toLowerCase() === 'unknow') {
+        warnWithTimestamp(`[GET /api/movies] 警告: 电影 ${movie.filename} (番号: ${movie.code || 'N/A'}) 缺少女优信息。`);
+      }
     });
+
+    const moviesToSend = processedMovies;
+    logWithTimestamp(`[GET /api/movies] 返回 ${moviesToSend.length} 部电影数据。`);
+
+    return NextResponse.json({ movies: moviesToSend, total: moviesToSend.length });
   } catch (error) {
-    errorWithTimestamp("[GET] Error scanning movies:", error);
+    errorWithTimestamp("[GET /api/movies] 获取电影列表时发生错误:", error);
     return NextResponse.json(
-      { error: "getFailed to scan movies" },
+      { error: "无法获取电影列表" },
       { status: 500 }
     );
   }

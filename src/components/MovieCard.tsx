@@ -25,74 +25,9 @@ interface MovieCardProps {
   };
   formatFileSize: (bytes: number) => string;
   onMovieClick: (absolutePath: string) => void;
-  glassSettings?: {
-    blurIntensity: number;
-    saturation: number;
-    backgroundOpacity: number;
-    gradientFromOpacity: number;
-    gradientToOpacity: number;
-    borderOpacity: number;
-    overlayHeight: number;
-  };
 }
 
-const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieClick, glassSettings }) => {
-  // 默认毛玻璃设置
-  const defaultGlassSettings = {
-    blurIntensity: 3,
-    saturation: 150,
-    backgroundOpacity: 40,
-    gradientFromOpacity: 70,
-    gradientToOpacity: 30,
-    borderOpacity: 10,
-    overlayHeight: 33,
-  };
-
-  const settings = glassSettings || defaultGlassSettings;
-
-  // 生成动态样式类名
-
-
-  const getHeightClass = (height: number) => {
-    if (height <= 25) return 'h-1/4';
-    if (height <= 33) return 'h-1/3';
-    if (height <= 40) return 'h-2/5';
-    return 'h-1/2';
-  };
-
-  // iOS 16 风格的毛玻璃效果
-  const overlayStyle = {
-    background: `
-      linear-gradient(to top, 
-        rgba(0,0,0,${settings.gradientFromOpacity / 100}), 
-        rgba(0,0,0,${settings.gradientToOpacity / 100})
-      ),
-      linear-gradient(135deg, 
-        rgba(255,255,255,0.1) 0%, 
-        rgba(255,255,255,0.05) 50%, 
-        rgba(0,0,0,0.1) 100%
-      )
-    `,
-    backdropFilter: `blur(${settings.blurIntensity * 6}px) saturate(${settings.saturation}%) brightness(1.1) contrast(1.1)`,
-    borderTop: `1px solid rgba(255,255,255,${settings.borderOpacity / 100})`,
-    boxShadow: `
-      inset 0 1px 0 rgba(255,255,255,0.2),
-      inset 0 -1px 0 rgba(0,0,0,0.1),
-      0 -4px 8px rgba(0,0,0,0.3)
-    `,
-    position: 'relative' as const,
-  };
-
-  // iOS 16 风格的噪点纹理
-  const noiseOverlayStyle = {
-    background: `
-      radial-gradient(circle at 20% 80%, rgba(120,119,198,0.3) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.15) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(120,119,198,0.2) 0%, transparent 50%)
-    `,
-    mixBlendMode: 'overlay' as const,
-    opacity: 0.6,
-  };
+const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieClick }) => {
   return (
     <div
       className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer relative"
@@ -106,18 +41,8 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
           e.currentTarget.src = "/placeholder-image.svg";
         }}
       />
-      <div 
-        className={`absolute bottom-0 left-0 right-0 w-full ${getHeightClass(settings.overlayHeight)} text-white overflow-hidden`}
-        style={overlayStyle}
-      >
-        {/* iOS 16 风格的噪点纹理层 */}
-        <div 
-          className="absolute inset-0 w-full h-full"
-          style={noiseOverlayStyle}
-        />
-        
-        {/* 内容层 */}
-        <div className="relative z-10 h-full flex flex-col justify-end p-3 space-y-1">
+      <div className="absolute bottom-0 left-0 right-0 w-full h-1/3 text-white overflow-hidden bg-gradient-to-t from-black/80 to-transparent">
+        <div className="h-full flex flex-col justify-end p-3 space-y-1">
           <div className="text-base font-semibold truncate leading-tight text-white drop-shadow-sm">
             {movie.displayTitle || movie.title || movie.filename}
           </div>

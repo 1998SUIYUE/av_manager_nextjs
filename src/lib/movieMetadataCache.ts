@@ -675,12 +675,19 @@ if (BACKUP_ENABLED) {
 /**
  * 从磁盘读取电影元数据缓存文件。
  * 已禁用短期内存缓存，每次都从磁盘读取最新数据。
+ * 读取前会先刷新写入队列，确保获取最新数据。
  * @returns 电影元数据数组。
  */
 async function readCache(): Promise<MovieMetadata[]> {
   // logWithTimestamp('[readCache] 从磁盘读取最新数据（已禁用内存缓存）');
   
-  // 直接从磁盘读取，不使用内存缓存
+  // 在读取前先刷新写入队列，确保所有待写入的数据都已持久化
+  if (_writeQueue.length > 0) {
+    logWithTimestamp(`[readCache] 检测到写入队列中有 ${_writeQueue.length} 个待写入操作，先刷新队列`);
+    await flushWriteQueue();
+  }
+  
+  // 从磁盘读取最新数据
   const data = await readCacheUnsafe();
   
   // 不再更新内存缓存

@@ -62,17 +62,6 @@ const MoviesPage = () => {
   const [previewA, setPreviewA] = useState<boolean>(false); // 是否预览影片A
   const [previewB, setPreviewB] = useState<boolean>(false); // 是否预览影片B
 
-  // 毛玻璃效果控制状态
-  const [showGlassPanel, setShowGlassPanel] = useState<boolean>(false); // 控制毛玻璃调节面板显示
-  const [glassSettings, setGlassSettings] = useState({
-    blurIntensity: 3, // 模糊强度 (1-5: sm, md, lg, xl, 2xl)
-    saturation: 150, // 饱和度 (50-200)
-    backgroundOpacity: 40, // 背景透明度 (0-100)
-    gradientFromOpacity: 70, // 渐变起始透明度 (0-100)
-    gradientToOpacity: 30, // 渐变结束透明度 (0-100)
-    borderOpacity: 10, // 边框透明度 (0-50)
-    overlayHeight: 33, // 遮挡高度百分比 (20-50)
-  });
 
   useEffect(() => {
     if (loadingStartTime) {
@@ -570,17 +559,6 @@ const MoviesPage = () => {
           >
             🆚 开始评分
           </button>
-        {/* 毛玻璃效果控制按钮 */}
-        <button
-            onClick={() => setShowGlassPanel(!showGlassPanel)}
-            className={`px-4 py-2 rounded-md font-semibold ${
-              showGlassPanel 
-                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                : 'bg-gray-600 hover:bg-gray-500 text-white'
-            }`}
-          >
-            🎨 毛玻璃效果
-          </button>
         </div>
       </div>
 
@@ -593,190 +571,6 @@ const MoviesPage = () => {
 
       <p className="text-center text-lg mb-4">总电影数: {totalMovies}</p>
 
-      {/* 毛玻璃效果控制面板 */}
-      {showGlassPanel && (
-        <div className="mb-6 p-6 bg-gray-800 rounded-lg border border-gray-700">
-          <h3 className="text-xl font-bold mb-4 text-center">🎨 毛玻璃效果调节</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            
-            {/* 模糊强度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                模糊强度: {['sm', 'md', 'lg', 'xl', '2xl'][glassSettings.blurIntensity - 1]}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={glassSettings.blurIntensity}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, blurIntensity: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 饱和度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                饱和度: {glassSettings.saturation}%
-              </label>
-              <input
-                type="range"
-                min="50"
-                max="200"
-                value={glassSettings.saturation}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, saturation: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 背景透明度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                背景透明度: {glassSettings.backgroundOpacity}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={glassSettings.backgroundOpacity}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, backgroundOpacity: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 渐变起始透明度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                渐变底部透明度: {glassSettings.gradientFromOpacity}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={glassSettings.gradientFromOpacity}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, gradientFromOpacity: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 渐变结束透明度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                渐变顶部透明度: {glassSettings.gradientToOpacity}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={glassSettings.gradientToOpacity}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, gradientToOpacity: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 边框透明度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                边框透明度: {glassSettings.borderOpacity}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="50"
-                value={glassSettings.borderOpacity}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, borderOpacity: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* 遮挡高度 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                遮挡高度: {glassSettings.overlayHeight}%
-              </label>
-              <input
-                type="range"
-                min="20"
-                max="50"
-                value={glassSettings.overlayHeight}
-                onChange={(e) => setGlassSettings(prev => ({ ...prev, overlayHeight: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-          </div>
-          
-          {/* 预设效果和重置按钮 */}
-          <div className="mt-6 space-y-4">
-            <h4 className="text-lg font-semibold text-center text-gray-300">🎨 预设效果</h4>
-            <div className="flex flex-wrap justify-center gap-2">
-              {/* iOS 16 经典 */}
-              <button
-                onClick={() => setGlassSettings({
-                  blurIntensity: 4,
-                  saturation: 180,
-                  backgroundOpacity: 25,
-                  gradientFromOpacity: 60,
-                  gradientToOpacity: 20,
-                  borderOpacity: 15,
-                  overlayHeight: 30,
-                })}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm"
-              >
-                📱 iOS 16 经典
-              </button>
-              
-              {/* iOS 16 深色 */}
-              <button
-                onClick={() => setGlassSettings({
-                  blurIntensity: 5,
-                  saturation: 160,
-                  backgroundOpacity: 40,
-                  gradientFromOpacity: 80,
-                  gradientToOpacity: 30,
-                  borderOpacity: 20,
-                  overlayHeight: 35,
-                })}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm"
-              >
-                🌙 iOS 16 深色
-              </button>
-              
-              {/* iOS 16 轻盈 */}
-              <button
-                onClick={() => setGlassSettings({
-                  blurIntensity: 3,
-                  saturation: 200,
-                  backgroundOpacity: 15,
-                  gradientFromOpacity: 40,
-                  gradientToOpacity: 10,
-                  borderOpacity: 25,
-                  overlayHeight: 25,
-                })}
-                className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-sm"
-              >
-                ✨ iOS 16 轻盈
-              </button>
-              
-              {/* 传统毛玻璃 */}
-              <button
-                onClick={() => setGlassSettings({
-                  blurIntensity: 3,
-                  saturation: 150,
-                  backgroundOpacity: 40,
-                  gradientFromOpacity: 70,
-                  gradientToOpacity: 30,
-                  borderOpacity: 10,
-                  overlayHeight: 33,
-                })}
-                className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm"
-              >
-                🔄 传统效果
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {sortedAndFilteredMovies.map((movie) => (
@@ -785,7 +579,6 @@ const MoviesPage = () => {
             movie={movie} 
             formatFileSize={formatFileSize}
             onMovieClick={handleMovieClick} // 传递点击事件处理函数
-            glassSettings={glassSettings} // 传递毛玻璃设置
           />
         ))}
       </div>
