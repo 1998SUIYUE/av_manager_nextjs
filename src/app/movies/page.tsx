@@ -114,11 +114,6 @@ const MoviesPage = () => {
     setShowVideoPlayer(false);
   }, []);
 
-  // 处理刷新操作
-  const handleRefresh = useCallback(() => {
-    logWithTimestamp("[MoviesPage] 用户手动刷新列表");
-    fetchMovies(); 
-  }, [fetchMovies]);
 
   // 处理电影删除操作
   const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
@@ -469,14 +464,6 @@ const MoviesPage = () => {
         >
             按评分排序
         </button>
-        {/* 新增刷新按钮 */}
-        <button
-            onClick={handleRefresh}
-            className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white"
-            disabled={loading}
-          >
-            {loading ? "加载中..." : "刷新列表"}
-          </button>
         {/* 对比评分按钮 */}
         <button
             onClick={() => startComparison()}
