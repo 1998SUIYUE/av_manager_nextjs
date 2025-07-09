@@ -21,22 +21,6 @@ async function ensureCacheDir() {
   }
 }
 
-// 根据文件扩展名获取MIME类型
-function getContentType(ext: string): string {
-  switch (ext.toLowerCase()) {
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg';
-    case '.png':
-      return 'image/png';
-    case '.gif':
-      return 'image/gif';
-    case '.webp':
-      return 'image/webp';
-    default:
-      return 'image/jpeg';
-  }
-}
 
 // 生成缓存文件名
 function getCacheFileName(url: string): string {
@@ -65,13 +49,12 @@ export async function GET(request: NextRequest) {
     // 获取URL参数
     const searchParams = request.nextUrl.searchParams;
     const imageUrl = searchParams.get('url');
-    const direct = searchParams.get('direct') === 'true';
     
     if (!imageUrl) {
       warnWithTimestamp('[image-proxy/GET] 缺少图片URL参数，返回 400');
       return new NextResponse('缺少图片URL参数', { status: 400 });
     }
-    logWithTimestamp(`[image-proxy/GET] 请求的图片URL: ${imageUrl}, direct模式: ${direct}`);
+    logWithTimestamp(`[image-proxy/GET] 请求的图片URL: ${imageUrl}`);
     
     // 缓存文件路径
     const cacheFileName = getCacheFileName(imageUrl);
@@ -79,26 +62,13 @@ export async function GET(request: NextRequest) {
     const publicPath = `/image-cache/${cacheFileName}`;
     logWithTimestamp(`[image-proxy/GET] 缓存文件路径: ${cachePath}, 公共路径: ${publicPath}`);
     
-    let imageBuffer: Buffer;
-    let extension: string;
-    
     // 检查缓存是否存在
     try {
       logWithTimestamp(`[image-proxy/GET] 尝试从缓存读取: ${cachePath}`);
       await fs.access(cachePath);
-      // 缓存存在
-      extension = path.extname(cachePath);
-      logWithTimestamp(`[image-proxy/GET] 缓存命中，从本地读取图片: ${cachePath}`);
-      
-      if (direct) {
-        // 如果请求直接返回图片内容
-        imageBuffer = await fs.readFile(cachePath);
-        logWithTimestamp('[image-proxy/GET] direct模式: 从缓存直接返回图片内容。');
-      } else {
-        // 否则返回公共路径
-        logWithTimestamp('[image-proxy/GET] 返回公共路径。');
-        return NextResponse.json({ imageUrl: publicPath });
-      }
+      // 缓存存在，直接返回公共路径
+      logWithTimestamp(`[image-proxy/GET] 缓存命中，返回公共路径: ${publicPath}`);
+      return NextResponse.json({ imageUrl: publicPath });
     } catch (cacheError) {
       // 缓存不存在，下载图片
       warnWithTimestamp(`[image-proxy/GET] 缓存未命中或读取失败: ${cacheError}. 开始下载图片: ${imageUrl}`);
@@ -111,8 +81,7 @@ export async function GET(request: NextRequest) {
           timeout: 10000 // 10秒超时
         });
         
-        imageBuffer = Buffer.from(response.data);
-        extension = path.extname(cacheFileName);
+        const imageBuffer = Buffer.from(response.data);
         logWithTimestamp(`[image-proxy/GET] 图片下载成功，大小: ${imageBuffer.length} 字节`);
         
         // 保存到缓存
@@ -123,42 +92,15 @@ export async function GET(request: NextRequest) {
           errorWithTimestamp(`[image-proxy/GET] 保存图片到缓存失败: ${writeError}`);
         }
         
-        if (!direct) {
-          // 返回缓存图片URL
-          logWithTimestamp('[image-proxy/GET] 返回公共路径。');
-          return NextResponse.json({ imageUrl: publicPath });
-        }
+        // 返回缓存图片URL
+        logWithTimestamp(`[image-proxy/GET] 返回公共路径: ${publicPath}`);
+        return NextResponse.json({ imageUrl: publicPath });
       } catch (fetchError: unknown) {
         errorWithTimestamp('[image-proxy/GET] 下载图片失败:', fetchError);
-        // 下载失败时返回默认图片
-        const defaultImagePath = path.join(process.cwd(), 'public', 'placeholder-image.svg');
-        warnWithTimestamp(`[image-proxy/GET] 下载失败，返回默认图片: ${defaultImagePath}`);
-        try {
-          imageBuffer = await fs.readFile(defaultImagePath);
-          extension = '.svg';
-        } catch (defaultImageError) {
-          errorWithTimestamp('[image-proxy/GET] 读取默认图片失败:', defaultImageError);
-          return new NextResponse('获取图片失败，且无法读取默认图片', { status: 500 });
-        }
+        // 下载失败时返回占位符图片路径
+        warnWithTimestamp(`[image-proxy/GET] 下载失败，返回占位符图片路径`);
+        return NextResponse.json({ imageUrl: '/placeholder-image.svg' });
       }
-    }
-    
-    // 如果是direct模式，直接返回图片内容
-    if (direct) {
-      logWithTimestamp(`[image-proxy/GET] direct模式: 返回图片内容，Content-Type: ${getContentType(extension)}`);
-      const headers = new Headers({
-        'Content-Type': getContentType(extension),
-        'Content-Length': imageBuffer.length.toString(),
-        'Cache-Control': 'public, max-age=86400' // 缓存1天
-      });
-      
-      return new NextResponse(imageBuffer, { 
-        status: 200,
-        headers
-      });
-    } else {
-      logWithTimestamp('[image-proxy/GET] 非direct模式: 返回公共路径。');
-      return NextResponse.json({ imageUrl: publicPath });
     }
   } catch (error: unknown) {
     errorWithTimestamp('[image-proxy/GET] 图片代理请求发生未知错误:', error);

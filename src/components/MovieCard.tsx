@@ -34,13 +34,39 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
       onClick={() => onMovieClick(movie.absolutePath)}
     >
       {/* 海报图片区域 - 保持原始比例 */}
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden bg-gray-700 min-h-[200px] flex items-center justify-center">
         <img
           src={movie.coverUrl || "/placeholder-image.svg"}
           alt={movie.displayTitle || movie.title || movie.filename}
-          className="w-full h-auto object-contain"
+          className="w-full h-auto object-contain max-h-[400px]"
           onError={(e) => {
-            e.currentTarget.src = "/placeholder-image.svg";
+            console.error('图片加载失败:', {
+              coverUrl: movie.coverUrl,
+              currentSrc: e.currentTarget.src,
+              filename: movie.filename
+            });
+            const target = e.currentTarget;
+            if (target.src !== window.location.origin + "/placeholder-image.svg") {
+              target.src = "/placeholder-image.svg";
+            } else {
+              // 如果占位符也失败了，显示文字
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent && !parent.querySelector('.fallback-text')) {
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.className = 'fallback-text text-gray-400 text-center p-4';
+                fallbackDiv.textContent = '图片无法加载';
+                parent.appendChild(fallbackDiv);
+              }
+            }
+          }}
+          onLoad={(e) => {
+            console.log('图片加载成功:', {
+              coverUrl: movie.coverUrl,
+              filename: movie.filename,
+              naturalWidth: (e.target as HTMLImageElement).naturalWidth,
+              naturalHeight: (e.target as HTMLImageElement).naturalHeight
+            });
           }}
         />
       </div>
