@@ -435,15 +435,15 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   
   // 打印重复文件信息
   if (duplicateMovies.length > 0) {
-    logWithTimestamp("检测到重复文件:");
+    console.log("检测到重复文件:");
     duplicateMovies.forEach((movie) => {
-      logWithTimestamp(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
+      console.log(`重复文件: \n  - 文件名: ${movie.filename}\n  - 路径: ${movie.path}\n  - 大小: ${movie.sizeInGB}GB;\n`);
     });
-    logWithTimestamp(`总共检测到 ${duplicateMovies.length} 个重复文件`);
+    console.log(`总共检测到 ${duplicateMovies.length} 个重复文件`);
   } else {
-    logWithTimestamp("没有检测到重复文件");
+    console.log("没有检测到重复文件");
   }
-  logWithTimestamp(
+  console.log(
     "项目路径: https://localhost:3000"
   );
   return processedMovies;
