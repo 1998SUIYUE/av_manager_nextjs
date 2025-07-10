@@ -152,24 +152,34 @@ export async function GET(
     
     // 解析 range 请求头
     const range = request.headers.get('range');
+    logWithTimestamp(`[video API] Range header: ${range || 'No Range header'}`);
     
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       
-      const chunksize = (end - start) + 1;
+      // 🚀 优化：如果请求的块太小，扩大到最少50MB，大幅提升预加载效果
+      const minChunkSize = 200 * 1024 * 1024; // 50MB
+      let actualEnd = end;
+      
+      if ((end - start + 1) < minChunkSize && end < fileSize - 1) {
+        actualEnd = Math.min(start + minChunkSize - 1, fileSize - 1);
+        logWithTimestamp(`[video API] 🚀 Expanding chunk from ${((end - start + 1) / 1024 / 1024).toFixed(1)}MB to ${((actualEnd - start + 1) / 1024 / 1024).toFixed(1)}MB for better caching`);
+      }
+      
+      const chunksize = (actualEnd - start) + 1;
       const headers = new Headers({
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Range': `bytes ${start}-${actualEnd}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize.toString(),
         'Content-Type': getContentType(fileExt),
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400'
+        'Cache-Control': 'public, max-age=86400, immutable' // 🚀 添加 immutable 提升缓存
       });
       
       // 创建文件流并添加错误处理
-      const fileStream = fs.createReadStream(absolutePath, { start, end });
+      const fileStream = fs.createReadStream(absolutePath, { start, end: actualEnd });
       
       // 添加错误处理，防止流被意外关闭
       fileStream.on('error', (error) => {

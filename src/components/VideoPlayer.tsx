@@ -248,6 +248,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     renderMode: "--"
   });
   const [isMobile, setIsMobile] = useState(false);
+  const [bufferedRanges, setBufferedRanges] = useState<{start: number, end: number}[]>([]);
+  const [showBufferInfo, setShowBufferInfo] = useState(false);
   
   // 添加显示/隐藏技术信息的切换函数
   const toggleTechInfo = useCallback(() => {
@@ -411,6 +413,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         duration: videoElement.duration,
       });
     }
+
+    // 🚀 更新缓冲区范围信息
+    if (videoElement.buffered.length > 0 && videoElement.duration > 0) {
+      const ranges: {start: number, end: number}[] = [];
+      for (let i = 0; i < videoElement.buffered.length; i++) {
+        const start = (videoElement.buffered.start(i) / videoElement.duration) * 100;
+        const end = (videoElement.buffered.end(i) / videoElement.duration) * 100;
+        ranges.push({ start, end });
+      }
+      setBufferedRanges(ranges);
+    }
     
     // 周期性更新技术信息
     updateVideoTechInfo();
@@ -514,6 +527,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (e.key === "i" || e.key === "I") {
         toggleTechInfo();
       }
+      
+      // 切换缓冲信息显示 (按 B 键)
+      if (e.key === "b" || e.key === "B") {
+        setShowBufferInfo(prev => !prev);
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -595,6 +613,56 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // 🚀 缓冲进度条显示组件
+  const BufferDisplay = useMemo(() => {
+    if (!showBufferInfo) return null;
+
+    return (
+      <div className="absolute bottom-16 left-4 right-4 bg-black bg-opacity-75 text-white p-3 rounded text-sm z-10">
+        <div className="mb-2 font-bold">缓冲状态 (按 B 键切换)</div>
+        
+        {/* 可视化进度条 */}
+        <div className="relative w-full h-2 bg-gray-600 rounded mb-2">
+          {bufferedRanges.map((range, index) => (
+            <div
+              key={index}
+              className="absolute h-full bg-blue-400 rounded"
+              style={{
+                left: `${range.start}%`,
+                width: `${range.end - range.start}%`,
+              }}
+            />
+          ))}
+          {/* 当前播放位置指示器 */}
+          {videoRef.current && videoRef.current.duration > 0 && (
+            <div
+              className="absolute top-0 w-0.5 h-full bg-red-500"
+              style={{
+                left: `${(videoRef.current.currentTime / videoRef.current.duration) * 100}%`,
+              }}
+            />
+          )}
+        </div>
+        
+        {/* 详细信息 */}
+        <div className="text-xs space-y-1">
+          <div>缓冲段数: {bufferedRanges.length}</div>
+          {bufferedRanges.map((range, index) => (
+            <div key={index} className="text-gray-300">
+              段 {index + 1}: {range.start.toFixed(1)}% - {range.end.toFixed(1)}% 
+              ({(range.end - range.start).toFixed(1)}% 已缓存)
+            </div>
+          ))}
+          {videoRef.current && videoRef.current.duration > 0 && (
+            <div className="text-yellow-300">
+              当前位置: {((videoRef.current.currentTime / videoRef.current.duration) * 100).toFixed(1)}%
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }, [showBufferInfo, bufferedRanges]);
+
   return (
     <div className="relative w-full h-full group">
       <video
@@ -609,6 +677,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         style={{ maxWidth: "100%", maxHeight: "100%" }}
         crossOrigin="anonymous"
         playsInline // 移动设备内联播放
+        // 🚀 优化缓存设置
+        
+        // 增加缓冲区大小提示
+        data-buffer-size="large"
       >
         您的浏览器不支持视频标签。
       </video>
@@ -626,6 +698,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
       {TechInfoDisplay}
+      {BufferDisplay}
       {LoadingIndicator}
       {ErrorDisplay}
     </div>
