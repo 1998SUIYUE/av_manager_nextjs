@@ -8,14 +8,6 @@ const nextConfig: NextConfig = {
     config.resolve.fallback = { fs: false, net: false, tls: false };
     return config;
   },
-  async rewrites() {
-    return [
-      {
-        source: '/image-cache/:path*',
-        destination: '/image-cache/:path*',
-      },
-    ];
-  },
 };
 
 export default nextConfig;
