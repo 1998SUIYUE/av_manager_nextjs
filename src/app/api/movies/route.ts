@@ -12,8 +12,9 @@ import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from "@/utils
 // 支持的视频文件扩展名列表
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
 
-// 文件大小阈值：只处理大于此大小的视频文件 (1GB = 1024 * 1024 * 1024 字节)
-const FILE_SIZE_THRESHOLD = 1 * 1024 * 1024 * 1024;
+// 文件大小阈值：只处理大于此大小的视频文件 (100MB = 100 * 1024 * 1024 字节)
+// 原来是1GB，现在改为100MB以便发现更多文件
+const FILE_SIZE_THRESHOLD = 100 * 1024 * 1024;
 
 // 请求延迟时间（毫秒），用于在获取电影元数据时避免频繁请求被网站屏蔽
 
@@ -327,7 +328,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   // 当前未限制处理文件数量 (todo: 可根据需要限制前N个文件)
-  const limitedMovies = sortedMovies.slice(20);
+  const limitedMovies = sortedMovies;
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
   const concurrencyLimit = 3;// 同时允许的最大请求数
@@ -564,16 +565,16 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
    * @param currentPath 当前要扫描的目录的绝对路径。
    */
   async function scanDirectory(currentPath: string) {
-    // logWithTimestamp(`[scanDirectory] 开始扫描子目录: ${currentPath}`);
+    logWithTimestamp(`[scanDirectory] 开始扫描子目录: ${currentPath}`);
 
     // 规范化当前路径，确保跨平台兼容性
     const normalizedPath = path.normalize(currentPath);
 
     try {
       // 读取当前目录的内容 (文件和子目录)
-      // logWithTimestamp(`[scanDirectory] 读取目录内容: ${normalizedPath}`);
+      logWithTimestamp(`[scanDirectory] 读取目录内容: ${normalizedPath}`);
       const files = await fs.promises.readdir(normalizedPath);
-      // logWithTimestamp(`[scanDirectory] 目录 ${normalizedPath} 中发现 ${files.length} 个条目`);
+      logWithTimestamp(`[scanDirectory] 目录 ${normalizedPath} 中发现 ${files.length} 个条目`);
 
       // 遍历目录中的每个条目
       for (const file of files) {
@@ -588,7 +589,7 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
 
           if (stats.isDirectory()) {
             // 如果是目录，则递归调用自身，继续扫描子目录
-            // console.log(`发现目录 ${fullPath}`);
+            logWithTimestamp(`[scanDirectory] 发现子目录，开始递归扫描: ${fullPath}`);
             await scanDirectory(fullPath);
           } else {
             // 如果是文件，则检查其是否为视频文件且大小符合要求
@@ -600,7 +601,7 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
               VIDEO_EXTENSIONS.includes(ext) &&
               stats.size >= FILE_SIZE_THRESHOLD
             ) {
-              // logWithTimestamp(`[scanDirectory] 发现符合条件的视频文件: ${file}`);
+              logWithTimestamp(`[scanDirectory] 发现符合条件的视频文件: ${file} (大小: ${(stats.size / (1024 * 1024 * 1024)).toFixed(2)}GB)`);
               // 解析电影文件名以提取元数据
               const parsedInfo = parseMovieFilename(file);
               // 构建 MovieFile 对象
@@ -624,9 +625,14 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
               // );
 
               movieFiles.push(movieFile); // 将电影文件添加到列表中
-              // logWithTimestamp(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
+              logWithTimestamp(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
             } else {
-              // console.log(`[scanDirectory] 跳过文件 (不符合条件): ${file}`);
+              // 记录跳过的文件及原因
+              if (!VIDEO_EXTENSIONS.includes(ext)) {
+                logWithTimestamp(`[scanDirectory] 跳过文件 (不支持的格式): ${file} (扩展名: ${ext})`);
+              } else if (stats.size < FILE_SIZE_THRESHOLD) {
+                logWithTimestamp(`[scanDirectory] 跳过文件 (文件太小): ${file} (大小: ${(stats.size / (1024 * 1024 * 1024)).toFixed(2)}GB, 阈值: ${(FILE_SIZE_THRESHOLD / (1024 * 1024 * 1024)).toFixed(2)}GB)`);
+              }
             }
           }
         } catch (fileError) {
