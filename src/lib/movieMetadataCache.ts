@@ -33,12 +33,6 @@ const WRITE_BATCH_DELAY = 1000; // 批量写入延迟：1秒
 const WRITE_BATCH_SIZE = 10; // 批量写入大小：10个操作
 const JSON_PRETTY_FORMAT = true; // JSON 格式化：true=可读性优先，false=性能优先
 
-// 备份机制相关配置
-const BACKUP_ENABLED = true; // 是否启用备份功能
-const BACKUP_INTERVAL = 30 * 60 * 1000; // 备份间隔：30分钟
-const MAX_BACKUP_COUNT = 10; // 最大备份文件数量
-const BACKUP_DIR = path.join(process.cwd(), 'cache-backups'); // 备份目录
-const BACKUP_ON_WRITE = true; // 每次写入时是否检查备份需求
 
 // 禁用短期内存缓存
 // let _readCache: ReadCacheEntry | null = null;
@@ -63,17 +57,7 @@ interface WriteOperation {
 let _writeQueue: WriteOperation[] = [];
 let _writeTimer: NodeJS.Timeout | null = null;
 
-// 备份相关变量
-let _lastBackupTime = 0; // 上次备份时间
-let _backupTimer: NodeJS.Timeout | null = null; // 定期备份定时器
-
-// 备份文件信息接口
-interface BackupInfo {
-  filename: string;
-  fullPath: string;
-  timestamp: number;
-  size: number;
-} 
+ 
 
 /**
  * 获取文件锁，防止并发写入冲突。
@@ -154,190 +138,6 @@ async function withFileLock<T>(operation: () => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * 确保备份目录存在
- */
-async function ensureBackupDir(): Promise<void> {
-  try {
-    await fs.mkdir(BACKUP_DIR, { recursive: true });
-  } catch (error) {
-    errorWithTimestamp('[ensureBackupDir] 创建备份目录失败:', error);
-  }
-}
-
-/**
- * 生成备份文件名
- */
-function generateBackupFilename(): string {
-  const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5); // 移除毫秒和时区
-  return `movie-metadata-cache-${timestamp}.json`;
-}
-
-/**
- * 获取所有备份文件信息
- */
-async function getBackupFiles(): Promise<BackupInfo[]> {
-  try {
-    await ensureBackupDir();
-    const files = await fs.readdir(BACKUP_DIR);
-    const backupFiles: BackupInfo[] = [];
-    
-    for (const file of files) {
-      if (file.startsWith('movie-metadata-cache-') && file.endsWith('.json')) {
-        const fullPath = path.join(BACKUP_DIR, file);
-        try {
-          const stat = await fs.stat(fullPath);
-          backupFiles.push({
-            filename: file,
-            fullPath,
-            timestamp: stat.mtimeMs,
-            size: stat.size
-          });
-        } catch (statError) {
-          warnWithTimestamp(`[getBackupFiles] 无法获取备份文件 ${file} 的信息:`, statError);
-        }
-      }
-    }
-    
-    // 按时间戳降序排序（最新的在前）
-    return backupFiles.sort((a, b) => b.timestamp - a.timestamp);
-  } catch (error) {
-    errorWithTimestamp('[getBackupFiles] 获取备份文件列表失败:', error);
-    return [];
-  }
-}
-
-/**
- * 创建缓存文件备份
- */
-async function createBackup(): Promise<boolean> {
-  if (!BACKUP_ENABLED) {
-    return false;
-  }
-  
-  try {
-    // 检查主缓存文件是否存在
-    try {
-      await fs.access(CACHE_FILE_PATH);
-    } catch { // 修改这里，移除 error 变量
-      logWithTimestamp('[createBackup] 主缓存文件不存在，跳过备份');
-      return false;
-    }
-    
-    await ensureBackupDir();
-    
-    const backupFilename = generateBackupFilename();
-    const backupPath = path.join(BACKUP_DIR, backupFilename);
-    
-    // 复制主文件到备份目录
-    await fs.copyFile(CACHE_FILE_PATH, backupPath);
-    
-    const stat = await fs.stat(backupPath);
-    const sizeKB = Math.round(stat.size / 1024);
-    
-    logWithTimestamp(`[createBackup] 备份创建成功: ${backupFilename} (${sizeKB}KB)`);
-    
-    // 更新最后备份时间
-    _lastBackupTime = Date.now();
-    
-    // 清理过期备份
-    await cleanupOldBackups();
-    
-    return true;
-  } catch (error) {
-    errorWithTimestamp('[createBackup] 创建备份失败:', error);
-    return false;
-  }
-}
-
-/**
- * 清理过期的备份文件
- */
-async function cleanupOldBackups(): Promise<void> {
-  try {
-    const backupFiles = await getBackupFiles();
-    
-    if (backupFiles.length <= MAX_BACKUP_COUNT) {
-      return; // 备份数量未超限
-    }
-    
-    // 删除超出数量限制的备份文件
-    const filesToDelete = backupFiles.slice(MAX_BACKUP_COUNT);
-    
-    for (const backup of filesToDelete) {
-      try {
-        await fs.unlink(backup.fullPath);
-        logWithTimestamp(`[cleanupOldBackups] 删除过期备份: ${backup.filename}`);
-      } catch (deleteError) {
-        warnWithTimestamp(`[cleanupOldBackups] 删除备份文件失败: ${backup.filename}`, deleteError);
-      }
-    }
-    
-    logWithTimestamp(`[cleanupOldBackups] 清理完成，删除了 ${filesToDelete.length} 个过期备份`);
-  } catch (error) {
-    errorWithTimestamp('[cleanupOldBackups] 清理备份文件失败:', error);
-  }
-}
-
-/**
- * 从备份恢复缓存文件
- */
-async function restoreFromBackup(): Promise<boolean> {
-  try {
-    const backupFiles = await getBackupFiles();
-    
-    if (backupFiles.length === 0) {
-      warnWithTimestamp('[restoreFromBackup] 没有可用的备份文件');
-      return false;
-    }
-    
-    // 尝试从最新的备份恢复
-    for (const backup of backupFiles) {
-      try {
-        // 验证备份文件是否有效
-        const backupContent = await fs.readFile(backup.fullPath, 'utf-8');
-        JSON.parse(backupContent); // 验证 JSON 格式
-        
-        // 复制备份文件到主文件位置
-        await fs.copyFile(backup.fullPath, CACHE_FILE_PATH);
-        
-        logWithTimestamp(`[restoreFromBackup] 从备份恢复成功: ${backup.filename}`);
-        
-        // 清除读取缓存，强制重新加载
-        // _readCache = null; // 移除此行
-        
-        return true;
-      } catch (restoreError) {
-        warnWithTimestamp(`[restoreFromBackup] 备份文件 ${backup.filename} 损坏，尝试下一个:`, restoreError);
-        continue;
-      }
-    }
-    
-    errorWithTimestamp('[restoreFromBackup] 所有备份文件都无法使用');
-    return false;
-  } catch (error) {
-    errorWithTimestamp('[restoreFromBackup] 恢复备份失败:', error);
-    return false;
-  }
-}
-
-/**
- * 检查是否需要创建备份
- */
-async function checkBackupNeeded(): Promise<void> {
-  if (!BACKUP_ENABLED) {
-    return;
-  }
-  
-  const now = Date.now();
-  const timeSinceLastBackup = now - _lastBackupTime;
-  
-  if (timeSinceLastBackup >= BACKUP_INTERVAL) {
-    logWithTimestamp(`[checkBackupNeeded] 距离上次备份已过 ${Math.round(timeSinceLastBackup / 60000)} 分钟，创建新备份`);
-    await createBackup();
-  }
-}
 
 /**
  * 从缓存中获取指定电影番号的元数据。
@@ -555,84 +355,10 @@ export function getCacheStats() {
     readCacheActive: false, // 内存缓存已禁用
     readCacheAge: 0, // 内存缓存已禁用
     writeQueueSize: _writeQueue.length,
-    writeTimerActive: _writeTimer !== null,
-    lastBackupTime: _lastBackupTime,
-    timeSinceLastBackup: _lastBackupTime ? Date.now() - _lastBackupTime : 0,
-    backupEnabled: BACKUP_ENABLED
+    writeTimerActive: _writeTimer !== null
   };
 }
 
-/**
- * 手动创建备份
- */
-export async function createManualBackup(): Promise<boolean> {
-  logWithTimestamp('[createManualBackup] 手动创建备份');
-  return await createBackup();
-}
-
-/**
- * 获取备份文件列表
- */
-export async function getBackupList(): Promise<BackupInfo[]> {
-  return await getBackupFiles();
-}
-
-/**
- * 手动从备份恢复
- */
-export async function restoreFromBackupManual(backupFilename?: string): Promise<boolean> {
-  if (backupFilename) {
-    // 从指定备份恢复
-    try {
-      const backupPath = path.join(BACKUP_DIR, backupFilename);
-      
-      // 验证备份文件
-      const backupContent = await fs.readFile(backupPath, 'utf-8');
-      JSON.parse(backupContent); // 验证 JSON 格式
-      
-      // 复制到主文件
-      await fs.copyFile(backupPath, CACHE_FILE_PATH);
-      
-      // 清除读取缓存
-      // _readCache = null; // 移除此行
-      
-      logWithTimestamp(`[restoreFromBackupManual] 从指定备份恢复成功: ${backupFilename}`);
-      return true;
-    } catch (error) {
-      errorWithTimestamp(`[restoreFromBackupManual] 从指定备份恢复失败: ${backupFilename}`, error);
-      return false;
-    }
-  } else {
-    // 从最新备份恢复
-    return await restoreFromBackup();
-  }
-}
-
-/**
- * 清理所有备份文件
- */
-export async function clearAllBackups(): Promise<number> {
-  try {
-    const backupFiles = await getBackupFiles();
-    let deletedCount = 0;
-    
-    for (const backup of backupFiles) {
-      try {
-        await fs.unlink(backup.fullPath);
-        deletedCount++;
-        logWithTimestamp(`[clearAllBackups] 删除备份: ${backup.filename}`);
-      } catch (deleteError) {
-        warnWithTimestamp(`[clearAllBackups] 删除备份失败: ${backup.filename}`, deleteError);
-      }
-    }
-    
-    logWithTimestamp(`[clearAllBackups] 清理完成，删除了 ${deletedCount} 个备份文件`);
-    return deletedCount;
-  } catch (error) {
-    errorWithTimestamp('[clearAllBackups] 清理备份失败:', error);
-    return 0;
-  }
-}
 
 // 进程退出时的清理逻辑
 process.on('beforeExit', async () => {
@@ -649,28 +375,9 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   logWithTimestamp('[movieMetadataCache] 收到 SIGTERM 信号，执行清理操作');
   await forceFlushWriteQueue();
-  if (_backupTimer) {
-    clearInterval(_backupTimer);
-  }
   process.exit(0);
 });
 
-// 初始化定期备份
-if (BACKUP_ENABLED) {
-  // 启动时创建一次备份
-  setTimeout(async () => {
-    logWithTimestamp('[movieMetadataCache] 启动时创建初始备份');
-    await createBackup();
-  }, 5000); // 延迟5秒，等待系统稳定
-  
-  // 设置定期备份定时器
-  _backupTimer = setInterval(async () => {
-    logWithTimestamp('[movieMetadataCache] 定期备份检查');
-    await checkBackupNeeded();
-  }, BACKUP_INTERVAL);
-  
-  logWithTimestamp(`[movieMetadataCache] 备份系统已启用，间隔: ${BACKUP_INTERVAL / 60000} 分钟，最大备份数: ${MAX_BACKUP_COUNT}`);
-}
 
 /**
  * 从磁盘读取电影元数据缓存文件。
@@ -708,13 +415,8 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
   try {
     const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
     if (!cacheContent || cacheContent.trim() === '') {
-      // 如果文件内容为空，尝试从备份恢复
-      logWithTimestamp('[readCache] 缓存文件内容为空，尝试从备份恢复');
-      const restored = await restoreFromBackup();
-      if (restored) {
-        // 恢复成功，重新读取
-        return await readCacheUnsafe();
-      }
+      // 如果文件内容为空，返回空数组
+      logWithTimestamp('[readCache] 缓存文件内容为空');
       return [];
     } else {
       // 解析 JSON 内容并返回
@@ -723,35 +425,20 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
         // logWithTimestamp(`[readCache] 从文件成功读取 ${cache.length} 条缓存记录`);
         return cache;
       } catch (parseError) {
-        // JSON 解析失败，可能文件损坏，尝试从备份恢复
-        errorWithTimestamp('[readCache] JSON 解析失败，缓存文件可能损坏，尝试从备份恢复:', parseError);
-        const restored = await restoreFromBackup();
-        if (restored) {
-          // 恢复成功，重新读取
-          return await readCacheUnsafe();
-        }
+        // JSON 解析失败，可能文件损坏
+        errorWithTimestamp('[readCache] JSON 解析失败，缓存文件可能损坏:', parseError);
         return [];
       }
     }
   } catch (error: unknown) {
     // 捕获文件操作中可能发生的错误
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-      // 如果文件不存在，尝试从备份恢复
-      logWithTimestamp('[readCache] 缓存文件不存在，尝试从备份恢复');
-      const restored = await restoreFromBackup();
-      if (restored) {
-        // 恢复成功，重新读取
-        return await readCacheUnsafe();
-      }
+      // 如果文件不存在，返回空数组
+      logWithTimestamp('[readCache] 缓存文件不存在');
       return [];
     } else {
-      // 处理其他读取错误，尝试从备份恢复
-      errorWithTimestamp('[readCache] 读取缓存文件失败，尝试从备份恢复:', error);
-      const restored = await restoreFromBackup();
-      if (restored) {
-        // 恢复成功，重新读取
-        return await readCacheUnsafe();
-      }
+      // 处理其他读取错误
+      errorWithTimestamp('[readCache] 读取缓存文件失败:', error);
       return [];
     }
   }
@@ -792,11 +479,6 @@ async function writeCacheUnsafe(cache: MovieMetadata[]) {
     
     const duration = Date.now() - startTime;
     logWithTimestamp(`[writeCache] 缓存成功写入磁盘，共 ${cache.length} 条记录，耗时 ${duration}ms (${formatType}格式)`);
-    
-    // 写入成功后检查是否需要备份
-    if (BACKUP_ON_WRITE) {
-      await checkBackupNeeded();
-    }
   } catch { // 修改这里，移除 _ 变量
     errorWithTimestamp('[writeCache] 写入缓存文件失败:');
     // 尝试清理临时文件

@@ -327,10 +327,10 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   // 当前未限制处理文件数量 (todo: 可根据需要限制前N个文件)
-  const limitedMovies = sortedMovies;
+  const limitedMovies = sortedMovies.slice(20);
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 2;// 同时允许的最大请求数
+  const concurrencyLimit = 3;// 同时允许的最大请求数
   const semaphore = new Semaphore(concurrencyLimit);
 
   // 使用 Promise.all 来并行处理电影文件，每个文件都会尝试获取其元数据
@@ -365,7 +365,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
               const result = await retryWithTimeout(
                 () => fetchCoverUrl(movie.code!, baseUrl),
                 2, // 最大重试次数
-                10000 // 每次重试的超时时间（毫秒）
+                3000 // 每次重试的超时时间（毫秒）
               );
               coverUrl = result.coverUrl;
               title = result.title;
