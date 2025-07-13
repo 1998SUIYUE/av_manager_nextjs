@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { chromium } from "playwright";
+import axios from "axios";
+import * as cheerio from "cheerio";
 import {
   getCachedMovieMetadata,
   updateMovieMetadataCache,
@@ -13,291 +14,139 @@ import { devWithTimestamp } from "@/utils/logger";
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
 
 // 文件大小阈值：只处理大于此大小的视频文件 (100MB = 100 * 1024 * 1024 字节)
-// 原来是1GB，现在改为100MB以便发现更多文件
 const FILE_SIZE_THRESHOLD = 100 * 1024 * 1024;
 
-// 请求延迟时间（毫秒），用于在获取电影元数据时避免频繁请求被网站屏蔽
-
-
-
-// 定义电影文件接口，包含各种电影元数据属性
+// 定义电影文件接口
 interface MovieFile {
-  filename: string; // 文件名 (例如: 'ABC-123.mp4')
-  path: string; // 文件所在目录的路径
-  absolutePath: string; // 文件的绝对路径
-  size: number; // 文件大小 (字节)
-  sizeInGB: number; // 文件大小 (GB)
-  extension: string; // 文件扩展名 (例如: '.mp4')
-  title: string; // 电影标题 (通常从文件名解析)
-  displayTitle?: string; // 用于显示的标题 (可能包含外部获取的标题)
-  year?: string; // 电影年份
-  modifiedAt: number; // 文件最后修改时间戳 (毫秒)
-  code?: string; // 电影番号 (例如: 'ABC-123')
-  coverUrl?: string | null; // 封面图片URL (可能来自外部网站)
-  actress?: string | null; // 女优名字
+  filename: string;
+  path: string;
+  absolutePath: string;
+  size: number;
+  sizeInGB: number;
+  extension: string;
+  title: string;
+  displayTitle?: string;
+  year?: string;
+  modifiedAt: number;
+  code?: string;
+  coverUrl?: string | null;
+  actress?: string | null;
 }
 
 /**
- * 解析电影文件名，提取标题、年份和番号。
- * @param filename 完整的电影文件名。
- * @returns 包含解析后标题、年份和番号的对象。
+ * 解析电影文件名
  */
 function parseMovieFilename(filename: string): {
   title: string;
   year?: string;
   code?: string;
 } {
-  // 移除文件扩展名，获取纯文件名
   const nameWithoutExt = path.basename(filename, path.extname(filename));
-
-  // 正则表达式匹配电影番号，例如 'ABC-123' 或 'XYZ-001' (不区分大小写)
   const matchResult = nameWithoutExt.match(/([a-zA-Z]{2,5}-\d{2,5})/i);
-
-  let title = nameWithoutExt; // 默认标题为去除扩展名后的完整文件名
+  let title = nameWithoutExt;
   let code: string | undefined;
 
   if (matchResult) {
-    code = matchResult[1].toUpperCase(); // 将番号转换为大写以保持一致性
-    // 如果文件名以番号开头，则从标题中移除番号，以获得更纯净的描述性标题
+    code = matchResult[1].toUpperCase();
     if (title.toLowerCase().startsWith(code.toLowerCase())) {
-        title = title.substring(code.length).trim();
-        // 移除番号后可能留下的分隔符（如 '-' 或 '_'）
-        if (title.startsWith('-') || title.startsWith('_')) {
-            title = title.substring(1).trim();
-        }
+      title = title.substring(code.length).trim();
+      if (title.startsWith('-') || title.startsWith('_')) {
+        title = title.substring(1).trim();
+      }
     }
   }
 
   return {
-    title: title, // 现在是更具描述性的标题
-    // 尝试从文件名中匹配年份 (例如: 19XX 或 20XX)
+    title: title,
     year: (nameWithoutExt.match(/\b(19\d{2}|20\d{2})\b/) || [])[0],
-    code: code, // 番号
+    code: code,
   };
 }
 
 /**
- * 根据电影番号从外部网站获取封面图片URL、标题和女优信息。
- * 会优先从本地缓存获取，如果缓存中没有，则使用 Playwright 进行网页抓取。
- * @param code 电影番号。
- * @param baseUrl 当前请求的基础URL，用于构建image-proxy的绝对路径。
- * @returns 包含封面URL、标题和女优信息的对象，或在失败时返回null。
+ * 使用 axios 和 cheerio 获取元数据，替代 Playwright
  */
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  // 1. 首先检查本地电影元数据缓存
+  // 1. 检查缓存
   const cachedMetadata = await getCachedMovieMetadata(code, baseUrl);
-  
-  if (cachedMetadata) {
-    // 如果缓存命中，并且有封面URL，直接返回缓存数据，避免网络请求
-    if (cachedMetadata.coverUrl !==null && cachedMetadata.title !== null) {
-      // console.log(`[fetchCoverUrl] 从缓存获取元数据 - 番号: ${code}
-      //   coverUrl: ${cachedMetadata.coverUrl},
-      //   title: ${cachedMetadata.title},
-      //   actress: ${cachedMetadata.actress},`);
-      return {
-        coverUrl: cachedMetadata.coverUrl,
-        title: cachedMetadata.title,
-        actress: cachedMetadata.actress,
-      };
-    }
-    // 如果缓存中没有封面URL，则继续执行网络请求获取
-    devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 在缓存中找到，但缺少封面URL，将尝试从网络获取`);
+  if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
+    return cachedMetadata;
   }
-  devWithTimestamp(`[fetchCoverUrl] 未获取到的cachaedmetadata ${code} `);
-  // 2. 如果缓存未命中，启动 Playwright 浏览器进行网页抓取
-  let browser = null;
+  if (cachedMetadata) {
+    devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 在缓存中找到，但信息不完整，将从网络获取`);
+  }
+
+  devWithTimestamp(`[fetchCoverUrl] 开始使用 axios 获取 ${code} 的元数据`);
+
   try {
-    devWithTimestamp(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
-
-    // 启动无头模式的 Chromium 浏览器，添加内存限制参数
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // 减少共享内存使用
-        '--disable-gpu',
-        '--memory-pressure-off',
-        '--max_old_space_size=512', // 限制内存使用到512MB
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
-      ]
+    // 2. 发送 HTTP 请求获取搜索结果页面
+    const searchUrl = `https://javdb.com/search?q=${code}&f=all`;
+    const searchResponse = await axios.get(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+      timeout: 8000,
     });
-    // devWithTimestamp(`[fetchCoverUrl] 浏览器启动成功`);
 
-    // 创建新的浏览器上下文，并设置用户代理以模拟真实浏览器行为
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    const $search = cheerio.load(searchResponse.data);
+    const moviePageLink = $search("div.movie-list > div.item > a").first().attr("href");
+
+    if (!moviePageLink) {
+      throw new Error(`在搜索结果中未找到番号 ${code} 的链接`);
+    }
+
+    const moviePageUrl = `https://javdb.com${moviePageLink}`;
+    devWithTimestamp(`[fetchCoverUrl] 找到详情页链接: ${moviePageUrl}`);
+
+    // 3. 请求电影详情页
+    const pageResponse = await axios.get(moviePageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+      timeout: 8000,
     });
-    // 创建新页面
-    const page = await context.newPage();
-    // devWithTimestamp(`[fetchCoverUrl] 新页面创建成功`);
+    const $page = cheerio.load(pageResponse.data);
 
-    // 构造 JavDB 搜索 URL
-    const url = `https://javdb.com/search?q=${code}&f=all/`;
-    devWithTimestamp(`[fetchCoverUrl] 开始访问 URL: ${url}`);
+    // 4. 解析页面内容
+    let coverUrl = $page("div.column-video-cover img").attr("src") || null;
+    const title = $page("h2 > strong.current-title").text().trim() || null;
+    const actress = $page('strong:contains("演員:")').nextAll("span.value").first().text().trim() || "unknow";
 
-    try {
-      // 导航到搜索结果页，等待 DOM 内容加载完成，减少超时时间
-      await page.goto(url, {
-        waitUntil: "domcontentloaded",
-        timeout: 6000, // 进一步减少超时时间
-      });
-      // devWithTimestamp(`[fetchCoverUrl] 页面加载完成`);
-
-      // 从搜索结果中提取正确的电影详情页 URL
-      const right_url = await page.evaluate(() => {
-        const right_url = document
-          .querySelector(
-            "body > section > div > div.movie-list.h.cols-4.vcols-8 > div:nth-child(1) > a"
-          )
-          ?.getAttribute("href");
-        return right_url;
-      });
-      // 导航到电影详情页
-      await page.goto(`https://javdb.com${right_url}`, {
-        waitUntil: "domcontentloaded",
-        timeout: 6000, // 进一步减少超时时间
-      });
-      devWithTimestamp(
-        `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
-      );
-
-      // 获取封面图URL
-      const coverSelectors = [
-        `body > section > div > div.video-detail > div.video-meta-panel > div > div.column.column-video-cover > a > img`,
-      ];
-      let coverUrl = null;
-      for (const selector of coverSelectors) {
-        // devWithTimestamp(`[fetchCoverUrl] 尝试封面选择器: ${selector}`);
-        coverUrl = await page.evaluate((sel) => {
-          const coverLink = document.querySelector(sel);
-          return coverLink ? coverLink.getAttribute("src") : null;
-        }, selector);
-
-        if (coverUrl) {
-          // devWithTimestamp(
-          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到封面: ${coverUrl}`
-          // );
-          break; // 找到封面后跳出循环
-        } else {
-          coverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-          devWithTimestamp(`[fetchCoverUrl] 选择器 ${selector} 未找到封面，使用MissAV默认封面: ${coverUrl}`);
-        }
-      }
-
-      // 如果成功获取到 coverUrl，则通过 image-proxy 进行本地缓存
-      if (coverUrl) {
-        devWithTimestamp(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
-        try {
-          const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`;
-          devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy API URL: ${proxyApiUrl}`);
-          const imageProxyResponse = await fetch(proxyApiUrl);
-          if (imageProxyResponse.ok) {
-            const proxyData = await imageProxyResponse.json();
-            const localCoverUrl = proxyData.imageUrl;
-            devWithTimestamp(`[fetchCoverUrl] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
-            coverUrl = localCoverUrl; // 更新 coverUrl 为本地路径
-          } else {
-            devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
-            // 如果代理失败，可以考虑使用默认图片或者保留原始URL
-          }
-        } catch (proxyError: unknown) {
-          devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
-        }
-      }
-
-      // 获取电影标题
-      const titleSelectors = [
-        `body > section.section > div > div.video-detail > h2 > strong.current-title`,
-      ];
-      let title = null;
-      for (const selector of titleSelectors) {
-        // devWithTimestamp(`[fetchCoverUrl] 尝试标题选择器: ${selector}`);
-        title = await page.evaluate((sel) => {
-          const titleElement = document.querySelector(sel);
-          return titleElement ? titleElement.textContent?.trim() || null : null;
-        }, selector);
-        if (title && title !== "null") {
-          // devWithTimestamp(
-          //   `[fetchCoverUrl] 使用选择器 ${selector} 找到标题: ${title}`
-          // );
-          break; // 找到标题后跳出循环
-        } else {
-          devWithTimestamp(`[fetchCoverUrl] 选择器 ${selector} 未找到标题`);
-        }
-      }
-
-      // 获取女优名字
-      let actress = "unknow";
-      const actress_name = await page
-        .locator('strong:has-text("演員:")') // 查找包含"演員"文本的 strong 元素
-        .locator(".. >> span.value >> a") // 向上查找父元素，再向下查找 span.value 和 a 元素
-        .first()
-        .textContent();
-      if (actress_name) {
-        actress = actress_name;
-      } else {
-        actress = "unknow";
-      }
-
-      // 关闭浏览器实例以释放资源
-      await browser.close();
-
-      // 无论是否获取到标题，只要有封面URL或者女优信息，都更新本地缓存
-      if (coverUrl || title || actress) {
-        devWithTimestamp(
-          `[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`
-        );
-        await updateMovieMetadataCache(code, coverUrl, title, actress);
-      } else {
-        devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理失败 - 未获取到任何元数据`);
-      }
-
-      return {
-        coverUrl,
-        title,
-        actress,
-      };
-    } catch (navigationError: unknown) {
-      devWithTimestamp(`[fetchCoverUrl] 页面导航错误:`, navigationError);
-      
-      // 即使导航出错，也尝试使用备用封面URL
-      const backupCoverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-      devWithTimestamp(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
-      
-      // 尝试通过image-proxy缓存备用封面
+    // 5. 处理封面图片代理
+    if (coverUrl) {
+      devWithTimestamp(`[fetchCoverUrl] 原始封面URL: ${coverUrl}`);
       try {
-        const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(backupCoverUrl)}`;
+        const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`;
         const imageProxyResponse = await fetch(proxyApiUrl);
         if (imageProxyResponse.ok) {
           const proxyData = await imageProxyResponse.json();
-          const localCoverUrl = proxyData.imageUrl;
-          devWithTimestamp(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
-          
-          // 更新缓存，保存备用封面
-          await updateMovieMetadataCache(code, localCoverUrl, null, null);
-          return { coverUrl: localCoverUrl, title: null, actress: null };
+          coverUrl = proxyData.imageUrl; // 更新为本地代理URL
+          devWithTimestamp(`[fetchCoverUrl] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`);
+        } else {
+           devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
         }
-              } catch (proxyError: unknown) {
-        devWithTimestamp(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
+      } catch (proxyError) {
+        devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
       }
-      
-      return { coverUrl: null, title: null, actress: null };
     }
+
+    // 6. 更新缓存并返回结果
+    if (coverUrl || title || actress) {
+      devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`);
+      await updateMovieMetadataCache(code, coverUrl, title, actress);
+    } else {
+      devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理失败 - 未获取到任何元数据`);
+    }
+
+    return { coverUrl, title, actress };
+
   } catch (error) {
     devWithTimestamp(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
-    if (browser) {
-      await browser.close();
-    }
     
-    // 即使出错，也尝试使用备用封面URL
+    // 错误处理和备用封面逻辑
     const backupCoverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
     devWithTimestamp(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
     
-    // 尝试通过image-proxy缓存备用封面
     try {
       const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(backupCoverUrl)}`;
       const imageProxyResponse = await fetch(proxyApiUrl);
@@ -305,8 +154,6 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         const proxyData = await imageProxyResponse.json();
         const localCoverUrl = proxyData.imageUrl;
         devWithTimestamp(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
-        
-        // 更新缓存，保存备用封面
         await updateMovieMetadataCache(code, localCoverUrl, null, null);
         return { coverUrl: localCoverUrl, title: null, actress: null };
       }
@@ -358,14 +205,14 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 2;// 适度提高并发数以提升速度
+  const concurrencyLimit = 3; // 设置为3，以降低被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
   
   // 启动内存监控
   const memoryCheckInterval = setInterval(checkMemoryUsage, 5000);
   
-  // 批处理大小（增加批处理大小提高效率）
-  const batchSize = 8;
+  // 批处理大小
+  const batchSize = 5;
 
   // 分批处理电影文件，避免一次性处理过多导致内存溢出
   const processedMovies: MovieFile[] = [];
@@ -379,7 +226,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
       try {
         const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
         if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
-          // 有完整缓存，直接添加到结果（包含Elo评分数据）
+          // 有完整缓存，直接添加到结果
           const eloData = cachedMetadata.elo !== undefined ? {
             elo: cachedMetadata.elo,
             matchCount: cachedMetadata.matchCount || 0,
@@ -400,7 +247,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
         } else {
           needsFetchMovies.push(movie);
         }
-      } catch{
+      } catch {
         needsFetchMovies.push(movie);
       }
     } else {
@@ -437,29 +284,14 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
               // 如果电影文件有番号，则尝试获取其封面和标题
               if (movie.code) {
                 try {
-                  // 首先尝试从缓存获取元数据
-                  const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
-                  
-                  // 如果缓存中有完整数据，直接使用，避免网络请求
-                  if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
-                    coverUrl = cachedMetadata.coverUrl;
-                    title = cachedMetadata.title;
-                    actress = cachedMetadata.actress;
-                    devWithTimestamp(`[processMovieFiles] 从缓存获取 ${movie.code} 的完整元数据`);
-                  } else {
-                    // 只有在缓存不完整时才进行网络请求
-                    devWithTimestamp(`[processMovieFiles] 缓存不完整，获取 ${movie.code} 的网络元数据`);
-                    
-                    // 使用 retryWithTimeout 包装 fetchCoverUrl，提供重试和超时功能
-                    const result = await retryWithTimeout(
-                      () => fetchCoverUrl(movie.code!, baseUrl),
-                      1, // 减少重试次数
-                      8000 // 适当的超时时间
-                    );
-                    coverUrl = result.coverUrl;
-                    title = result.title;
-                    actress = result.actress;
-                  }
+                  const result = await retryWithTimeout(
+                    () => fetchCoverUrl(movie.code!, baseUrl),
+                    2, // 重试2次
+                    10000 // 10秒超时
+                  );
+                  coverUrl = result.coverUrl;
+                  title = result.title;
+                  actress = result.actress;
                 } catch (error) {
                   devWithTimestamp(`处理电影 ${movie.filename} 时发生错误:`, error);
                 }
@@ -481,8 +313,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                         (cachedMetadata.winCount || 0) / cachedMetadata.matchCount : 0
                     };
                   }
-                } catch (error) {
-                  devWithTimestamp(error)
+                } catch{
                   // 忽略评分数据获取错误
                 }
               }
@@ -519,9 +350,10 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
         }
       });
       
-      // 批次间延迟，给系统喘息时间（减少延迟提高速度）
+      // 批次间延迟，给系统喘息时间
       if (i + batchSize < needsFetchMovies.length) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // 从3秒减少到0.5秒
+        devWithTimestamp(`[processMovieFiles] 批次处理完成，延迟1秒...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
   } finally {
