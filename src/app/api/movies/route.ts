@@ -205,7 +205,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 3; // 设置为3，以降低被屏蔽风险
+  const concurrencyLimit = 8; // 设置为8，以降低被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
   
   // 启动内存监控
@@ -287,7 +287,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                   const result = await retryWithTimeout(
                     () => fetchCoverUrl(movie.code!, baseUrl),
                     2, // 重试2次
-                    10000 // 10秒超时
+                    5000 // 5秒超时
                   );
                   coverUrl = result.coverUrl;
                   title = result.title;
