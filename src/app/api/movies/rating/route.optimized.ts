@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCachedMovieMetadata, updateMovieMetadataCache } from "@/lib/movieMetadataCache";
-import { logWithTimestamp, errorWithTimestamp } from "@/utils/logger";
+import { devWithTimestamp } from "@/utils/logger";
 
 // 对比结果类型
 type ComparisonResult = 'A_WINS' | 'B_WINS' | 'DRAW';
@@ -157,10 +157,10 @@ async function updateRatingsAsync(
       )
     ]);
     
-    logWithTimestamp(`[updateRatingsAsync] 评分更新完成 - ${movieACode}: ${ratingA.elo} → ${newRatingA.elo} (${changeA > 0 ? '+' : ''}${changeA})`);
-    logWithTimestamp(`[updateRatingsAsync] 评分更新完成 - ${movieBCode}: ${ratingB.elo} → ${newRatingB.elo} (${changeB > 0 ? '+' : ''}${changeB})`);
+    devWithTimestamp(`[updateRatingsAsync] 评分更新完成 - ${movieACode}: ${ratingA.elo} → ${newRatingA.elo} (${changeA > 0 ? '+' : ''}${changeA})`);
+    devWithTimestamp(`[updateRatingsAsync] 评分更新完成 - ${movieBCode}: ${ratingB.elo} → ${newRatingB.elo} (${changeB > 0 ? '+' : ''}${changeB})`);
   } catch (error) {
-    errorWithTimestamp("[updateRatingsAsync] 异步更新评分数据失败:", error);
+    devWithTimestamp("[updateRatingsAsync] 异步更新评分数据失败:", error);
   }
 }
 
@@ -170,7 +170,7 @@ async function updateRatingsAsync(
  */
 export async function POST(request: Request) {
   const startTime = Date.now();
-  logWithTimestamp(`[POST /api/movies/rating] 接收到评分请求`);
+  devWithTimestamp(`[POST /api/movies/rating] 接收到评分请求`);
   
   try {
     const { movieACode, movieBCode, result } = await request.json();
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
       );
     }
     
-    logWithTimestamp(`[POST /api/movies/rating] 对比: ${movieACode} vs ${movieBCode}, 结果: ${result}`);
+    devWithTimestamp(`[POST /api/movies/rating] 对比: ${movieACode} vs ${movieBCode}, 结果: ${result}`);
     
     // 获取两部影片的当前Elo数据
     const [ratingA, ratingB] = await Promise.all([
@@ -214,11 +214,11 @@ export async function POST(request: Request) {
       changeA,
       changeB
     ).catch(error => {
-      errorWithTimestamp("[POST /api/movies/rating] 异步更新评分数据失败:", error);
+      devWithTimestamp("[POST /api/movies/rating] 异步更新评分数据失败:", error);
     });
     
     const processingTime = Date.now() - startTime;
-    logWithTimestamp(`[POST /api/movies/rating] 请求处理完成，耗时: ${processingTime}ms`);
+    devWithTimestamp(`[POST /api/movies/rating] 请求处理完成，耗时: ${processingTime}ms`);
     
     // 立即返回响应，不等待评分数据更新完成
     return NextResponse.json({
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
     
   } catch (error) {
     const processingTime = Date.now() - startTime;
-    errorWithTimestamp(`[POST /api/movies/rating] 处理评分请求时发生错误 (${processingTime}ms):`, error);
+    devWithTimestamp(`[POST /api/movies/rating] 处理评分请求时发生错误 (${processingTime}ms):`, error);
     return NextResponse.json(
       { error: "评分处理失败" },
       { status: 500 }

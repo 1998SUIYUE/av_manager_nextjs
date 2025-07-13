@@ -4,14 +4,14 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    
-    "dev": "powershell -Command \"Start-Process http://localhost:3000; & next dev\"",
+    "dev": "next dev",
     "build": "next build",
-    "start": "powershell -Command \"Start-Process http://localhost:3000; & next start \"",
+    "start": "next start",
     "lint": "next lint",
-    "electron": "electron .",
-    "package": "electron-packager . MyNextJsApp --platform=win32 --arch=x64",
-    "dist": "electron-builder",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "electron:pack": "electron-builder",
+    "build:electron": "npm run build && electron-builder",
+    "dist": "npm run build && npm run electron:pack",
     "clean": "rimraf .next"
   },
   "dependencies": {
@@ -29,6 +29,9 @@
     "@types/react-dom": "^18",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "electron-is-dev": "^2.0.0",
+    "find-free-port": "^2.0.0",
+    "cross-env": "^7.0.3",
     "eslint": "^8",
     "eslint-config-next": "15.0.3",
     "postcss": "^8",
@@ -36,13 +39,44 @@
     "typescript": "^5"
   },
   "build": {
-    "appId": "AVManger",
+    "appId": "com.yourcompany.avmanager",
+    "productName": "AV Manager",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "files": [
       "main.js",
-      "out/**/*"
+      "preload.js", 
+      "splash.html",
+      ".next/**/*",
+      "package.json",
+      "public/**/*",
+      "!node_modules/**/*",
+      "!src/**/*",
+      "!.git/**/*",
+      "!*.md",
+      "!.eslintrc.json",
+      "!tsconfig.json"
     ],
-    "directories": {
-      "buildResources": "assets"
+    "extraResources": [
+      {
+        "from": "userData",
+        "to": "userData"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/next/**/*",
+      "node_modules/react/**/*",
+      "node_modules/react-dom/**/*",
+      "node_modules/styled-jsx/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "AV-Manager-Portable.exe"
     }
   }
 }

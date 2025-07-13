@@ -1,4 +1,4 @@
-import { warnWithTimestamp } from '@/utils/logger';
+import { devWithTimestamp } from '@/utils/logger';
 import fs from 'fs';
 import path from 'path';
 
@@ -55,7 +55,7 @@ export function scanMovieDirectory(directoryPath: string): MovieFile[] {
           };
           movieFiles.push(movieFile);
         } else{
-          warnWithTimestamp(`[scanMovieDirectory] 不支持的文件类型: ${fullPath}`);
+          devWithTimestamp(`[scanMovieDirectory] 不支持的文件类型: ${fullPath}`);
         }
       }
     });
@@ -82,7 +82,7 @@ export function parseMovieFilename(filename: string): {
   const codeMatch = nameWithoutExt.match(codeRegex);
   //没有匹配到的文件名打印出来
   if(!codeMatch){
-    warnWithTimestamp(`[parseMovieFilename] 没有匹配到的文件名: ${filename}`);
+    devWithTimestamp(`[parseMovieFilename] 没有匹配到的文件名: ${filename}`);
   }
   const code = codeMatch ? codeMatch[1].toUpperCase() : undefined;
   

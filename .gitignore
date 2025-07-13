@@ -39,7 +39,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 # cache
-
+/userData
 /public/image-cache
 /cache-backups
 movie-metadata-cache.json

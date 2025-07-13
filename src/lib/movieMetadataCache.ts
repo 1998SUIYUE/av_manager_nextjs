@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 // import fsSync from 'fs'; // 移除此行
-import path from 'path';
-import { logWithTimestamp, warnWithTimestamp, errorWithTimestamp } from '@/utils/logger';
+
+import { devWithTimestamp } from '@/utils/logger';
 
 // 定义电影元数据接口，表示缓存中存储的每条电影信息结构
 export interface MovieMetadata {
@@ -20,8 +20,10 @@ export interface MovieMetadata {
   recentMatches?: string[]; // 最近对比过的影片ID (避免重复)
 }
 
-// 缓存文件在项目根目录的绝对路径
-const CACHE_FILE_PATH = path.join(process.cwd(), 'movie-metadata-cache.json');
+import { getMovieMetadataCachePath } from '@/utils/paths';
+
+// 缓存文件在用户数据目录的绝对路径
+const CACHE_FILE_PATH = getMovieMetadataCachePath();
 // 锁文件路径，用于防止并发写入冲突
 const LOCK_FILE_PATH = CACHE_FILE_PATH + '.lock';
 // 锁超时时间（毫秒），防止死锁
@@ -76,15 +78,15 @@ async function acquireLock(): Promise<() => void> {
     try {
       // 尝试创建锁文件，使用 'wx' 标志确保文件不存在时才创建
       await fs.writeFile(LOCK_FILE_PATH, JSON.stringify(lockData, null, 2), { flag: 'wx' });
-      logWithTimestamp(`[acquireLock] 成功获取文件锁: ${LOCK_FILE_PATH}`);
+      devWithTimestamp(`[acquireLock] 成功获取文件锁: ${LOCK_FILE_PATH}`);
       
       // 返回释放锁的函数
       return async () => {
         try {
           await fs.unlink(LOCK_FILE_PATH);
-          logWithTimestamp(`[releaseLock] 成功释放文件锁: ${LOCK_FILE_PATH}`);
+          devWithTimestamp(`[releaseLock] 成功释放文件锁: ${LOCK_FILE_PATH}`);
         } catch (unlinkError) {
-          warnWithTimestamp(`[releaseLock] 释放文件锁失败: ${unlinkError}`);
+          devWithTimestamp(`[releaseLock] 释放文件锁失败: ${unlinkError}`);
         }
       };
     } catch (error: unknown) {
@@ -97,17 +99,17 @@ async function acquireLock(): Promise<() => void> {
           
           // 如果锁已过期，尝试删除过期锁
           if (lockAge > LOCK_TIMEOUT) {
-            warnWithTimestamp(`[acquireLock] 检测到过期锁文件，尝试清理: ${LOCK_FILE_PATH}`);
+            devWithTimestamp(`[acquireLock] 检测到过期锁文件，尝试清理: ${LOCK_FILE_PATH}`);
             try {
               await fs.unlink(LOCK_FILE_PATH);
-              logWithTimestamp(`[acquireLock] 成功清理过期锁文件`);
+              devWithTimestamp(`[acquireLock] 成功清理过期锁文件`);
               continue; // 重新尝试获取锁
             } catch (cleanupError) {
-              warnWithTimestamp(`[acquireLock] 清理过期锁文件失败: ${cleanupError}`);
+              devWithTimestamp(`[acquireLock] 清理过期锁文件失败: ${cleanupError}`);
             }
           }
         } catch (readError) {
-          warnWithTimestamp(`[acquireLock] 读取锁文件信息失败: ${readError}`);
+          devWithTimestamp(`[acquireLock] 读取锁文件信息失败: ${readError}`);
         }
         
         // 检查是否超时
@@ -146,43 +148,43 @@ async function withFileLock<T>(operation: () => Promise<T>): Promise<T> {
  * @returns 对应的电影元数据，如果未找到则返回 null。
  */
 export async function getCachedMovieMetadata(code: string, baseUrl: string): Promise<MovieMetadata | null> {
-  // logWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存（直接从磁盘读取）`);
+  // devWithTimestamp(`[getCachedMovieMetadata] 尝试获取番号 ${code} 的缓存（直接从磁盘读取）`);
   // 1. 直接从磁盘文件中查找（内存缓存已禁用）
   const cache = await readCache(); // 每次都从磁盘读取最新数据
   const found = cache.find(m => m.code === code);
 
   // 如果找到缓存条目，并且其 coverUrl 仍然是外部链接，则尝试本地化
   if (found && found.coverUrl && (found.coverUrl.startsWith('http://') || found.coverUrl.startsWith('https://'))) {
-    logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 发现外部封面URL，尝试本地化: ${found.coverUrl}`);
+    devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 发现外部封面URL，尝试本地化: ${found.coverUrl}`);
     try {
       // 使用 baseUrl 构建完整的 image-proxy URL
       const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(found.coverUrl)}`;
-      logWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy API URL: ${proxyApiUrl}`);
+      devWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy API URL: ${proxyApiUrl}`);
       const imageProxyResponse = await fetch(proxyApiUrl);
       if (imageProxyResponse.ok) {
         const proxyData = await imageProxyResponse.json();
         const localCoverUrl = proxyData.imageUrl;
-        logWithTimestamp(`[getCachedMovieMetadata] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
+        devWithTimestamp(`[getCachedMovieMetadata] 图片已通过 image-proxy 缓存到本地: ${localCoverUrl}`);
         
         // 更新找到的缓存条目，并写入磁盘
         found.coverUrl = localCoverUrl; 
         await updateMovieMetadataCache(found.code, found.coverUrl, found.title, found.actress); // 持久化更新
-        logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 的封面URL已更新并持久化到本地`);
+        devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 的封面URL已更新并持久化到本地`);
       } else {
-        errorWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+        devWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
         // 如果代理失败，可以考虑使用默认图片或者保留原始URL，但不再尝试本地化
       }
     } catch (proxyError) {
-      errorWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 发生错误: ${proxyError}`);
+      devWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 发生错误: ${proxyError}`);
       // 发生错误时，将 found 设为 null 或者不修改 found.coverUrl，以便后续处理
     }
   }
 
   if (found) {
-    // logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
+    // devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
     return found;
   }
-  logWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
+  devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
   return null;
 }
 
@@ -210,7 +212,7 @@ export async function updateMovieMetadataCache(
     recentMatches?: string[];
   }
 ) {
-  logWithTimestamp(`[updateMovieMetadataCache] 添加番号 ${code} 到批量写入队列`);
+  devWithTimestamp(`[updateMovieMetadataCache] 添加番号 ${code} 到批量写入队列`);
   
   // 添加到批量写入队列
   const operation: WriteOperation = {
@@ -237,7 +239,7 @@ export async function updateMovieMetadataCache(
   
   // 如果队列达到批量大小，立即执行写入
   if (_writeQueue.length >= WRITE_BATCH_SIZE) {
-    logWithTimestamp(`[updateMovieMetadataCache] 队列达到批量大小 (${WRITE_BATCH_SIZE})，立即执行写入`);
+    devWithTimestamp(`[updateMovieMetadataCache] 队列达到批量大小 (${WRITE_BATCH_SIZE})，立即执行写入`);
     await flushWriteQueue();
   } else {
     // 否则设置定时器延迟写入
@@ -247,7 +249,7 @@ export async function updateMovieMetadataCache(
     _writeTimer = setTimeout(async () => {
       await flushWriteQueue();
     }, WRITE_BATCH_DELAY);
-    logWithTimestamp(`[updateMovieMetadataCache] 设置批量写入定时器，队列大小: ${_writeQueue.length}`);
+    devWithTimestamp(`[updateMovieMetadataCache] 设置批量写入定时器，队列大小: ${_writeQueue.length}`);
   }
 }
 
@@ -268,7 +270,7 @@ async function flushWriteQueue() {
   const operationsToProcess = [..._writeQueue];
   _writeQueue = []; // 清空队列
   
-  logWithTimestamp(`[flushWriteQueue] 开始批量写入 ${operationsToProcess.length} 个操作`);
+  devWithTimestamp(`[flushWriteQueue] 开始批量写入 ${operationsToProcess.length} 个操作`);
   
   // 使用文件锁保护整个批量写入操作
   await withFileLock(async () => {
@@ -302,14 +304,14 @@ async function flushWriteQueue() {
           lastRated: lastRated !== undefined ? lastRated : existing.lastRated,
           recentMatches: recentMatches !== undefined ? recentMatches : existing.recentMatches
         };
-        logWithTimestamp(`[flushWriteQueue] 批量更新现有缓存条目: ${code}`);
+        devWithTimestamp(`[flushWriteQueue] 批量更新现有缓存条目: ${code}`);
       } else {
         // 添加新条目到开头
         cache.unshift({
           code, coverUrl, title, actress, lastUpdated: timestamp,
           elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches
         });
-        logWithTimestamp(`[flushWriteQueue] 批量添加新缓存条目: ${code}`);
+        devWithTimestamp(`[flushWriteQueue] 批量添加新缓存条目: ${code}`);
       }
       modified = true;
     }
@@ -319,7 +321,7 @@ async function flushWriteQueue() {
       await writeCacheUnsafe(cache);
       // 清除读取缓存，强制下次读取时重新加载
       // _readCache = null; // 移除此行
-      logWithTimestamp(`[flushWriteQueue] 批量写入完成，共处理 ${operationsToProcess.length} 个操作`);
+      devWithTimestamp(`[flushWriteQueue] 批量写入完成，共处理 ${operationsToProcess.length} 个操作`);
     }
   });
 }
@@ -329,7 +331,7 @@ async function flushWriteQueue() {
  */
 export async function forceFlushWriteQueue(): Promise<void> {
   if (_writeQueue.length > 0) {
-    logWithTimestamp(`[forceFlushWriteQueue] 强制刷新写入队列，包含 ${_writeQueue.length} 个操作`);
+    devWithTimestamp(`[forceFlushWriteQueue] 强制刷新写入队列，包含 ${_writeQueue.length} 个操作`);
     await flushWriteQueue();
   }
 }
@@ -344,7 +346,7 @@ export function clearAllCaches(): void {
     clearTimeout(_writeTimer);
     _writeTimer = null;
   }
-  logWithTimestamp('[clearAllCaches] 所有缓存已清除');
+  devWithTimestamp('[clearAllCaches] 所有缓存已清除');
 }
 
 /**
@@ -362,18 +364,18 @@ export function getCacheStats() {
 
 // 进程退出时的清理逻辑
 process.on('beforeExit', async () => {
-  logWithTimestamp('[movieMetadataCache] 进程即将退出，执行清理操作');
+  devWithTimestamp('[movieMetadataCache] 进程即将退出，执行清理操作');
   await forceFlushWriteQueue();
 });
 
 process.on('SIGINT', async () => {
-  logWithTimestamp('[movieMetadataCache] 收到 SIGINT 信号，执行清理操作');
+  devWithTimestamp('[movieMetadataCache] 收到 SIGINT 信号，执行清理操作');
   await forceFlushWriteQueue();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  logWithTimestamp('[movieMetadataCache] 收到 SIGTERM 信号，执行清理操作');
+  devWithTimestamp('[movieMetadataCache] 收到 SIGTERM 信号，执行清理操作');
   await forceFlushWriteQueue();
   process.exit(0);
 });
@@ -386,11 +388,11 @@ process.on('SIGTERM', async () => {
  * @returns 电影元数据数组。
  */
 async function readCache(): Promise<MovieMetadata[]> {
-  // logWithTimestamp('[readCache] 从磁盘读取最新数据（已禁用内存缓存）');
+  // devWithTimestamp('[readCache] 从磁盘读取最新数据（已禁用内存缓存）');
   
   // 在读取前先刷新写入队列，确保所有待写入的数据都已持久化
   if (_writeQueue.length > 0) {
-    logWithTimestamp(`[readCache] 检测到写入队列中有 ${_writeQueue.length} 个待写入操作，先刷新队列`);
+    devWithTimestamp(`[readCache] 检测到写入队列中有 ${_writeQueue.length} 个待写入操作，先刷新队列`);
     await flushWriteQueue();
   }
   
@@ -411,22 +413,22 @@ async function readCache(): Promise<MovieMetadata[]> {
  * @returns 电影元数据数组。
  */
 async function readCacheUnsafe(): Promise<MovieMetadata[]> {
-  // logWithTimestamp('[readCache] 从磁盘文件读取缓存数据');
+  // devWithTimestamp('[readCache] 从磁盘文件读取缓存数据');
   try {
     const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
     if (!cacheContent || cacheContent.trim() === '') {
       // 如果文件内容为空，返回空数组
-      logWithTimestamp('[readCache] 缓存文件内容为空');
+      devWithTimestamp('[readCache] 缓存文件内容为空');
       return [];
     } else {
       // 解析 JSON 内容并返回
       try {
         const cache = JSON.parse(cacheContent);
-        // logWithTimestamp(`[readCache] 从文件成功读取 ${cache.length} 条缓存记录`);
+        // devWithTimestamp(`[readCache] 从文件成功读取 ${cache.length} 条缓存记录`);
         return cache;
       } catch (parseError) {
         // JSON 解析失败，可能文件损坏
-        errorWithTimestamp('[readCache] JSON 解析失败，缓存文件可能损坏:', parseError);
+        devWithTimestamp('[readCache] JSON 解析失败，缓存文件可能损坏:', parseError);
         return [];
       }
     }
@@ -434,11 +436,11 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
     // 捕获文件操作中可能发生的错误
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
       // 如果文件不存在，返回空数组
-      logWithTimestamp('[readCache] 缓存文件不存在');
+      devWithTimestamp('[readCache] 缓存文件不存在');
       return [];
     } else {
       // 处理其他读取错误
-      errorWithTimestamp('[readCache] 读取缓存文件失败:', error);
+      devWithTimestamp('[readCache] 读取缓存文件失败:', error);
       return [];
     }
   }
@@ -452,11 +454,11 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
  */
 async function writeCacheUnsafe(cache: MovieMetadata[]) {
   const startTime = Date.now();
-  logWithTimestamp('[writeCache] 开始写入缓存到磁盘');
+  devWithTimestamp('[writeCache] 开始写入缓存到磁盘');
   
   // 写入前校验数据有效性，避免写入空数组或无效数据，防止覆盖掉有效数据
   if (!Array.isArray(cache) || cache.length === 0) {
-    warnWithTimestamp('[writeCache] 拒绝写入空缓存或无效数据，保留原有内容');
+    devWithTimestamp('[writeCache] 拒绝写入空缓存或无效数据，保留原有内容');
     return;
   }
   
@@ -470,17 +472,17 @@ async function writeCacheUnsafe(cache: MovieMetadata[]) {
   
   try {
     // 1. 将数据写入临时文件
-    logWithTimestamp(`[writeCache] 写入临时文件: ${tmpFile} (${fileSizeKB}KB, ${formatType}格式)`);
+    devWithTimestamp(`[writeCache] 写入临时文件: ${tmpFile} (${fileSizeKB}KB, ${formatType}格式)`);
     await fs.writeFile(tmpFile, jsonString, 'utf-8');
     
     // 2. 将临时文件重命名为正式文件 (原子操作)
-    logWithTimestamp(`[writeCache] 重命名临时文件到: ${CACHE_FILE_PATH}`);
+    devWithTimestamp(`[writeCache] 重命名临时文件到: ${CACHE_FILE_PATH}`);
     await fs.rename(tmpFile, CACHE_FILE_PATH);
     
     const duration = Date.now() - startTime;
-    logWithTimestamp(`[writeCache] 缓存成功写入磁盘，共 ${cache.length} 条记录，耗时 ${duration}ms (${formatType}格式)`);
+    devWithTimestamp(`[writeCache] 缓存成功写入磁盘，共 ${cache.length} 条记录，耗时 ${duration}ms (${formatType}格式)`);
   } catch { // 修改这里，移除 _ 变量
-    errorWithTimestamp('[writeCache] 写入缓存文件失败:');
+    devWithTimestamp('[writeCache] 写入缓存文件失败:');
     // 尝试清理临时文件
     try {
       await fs.unlink(tmpFile);

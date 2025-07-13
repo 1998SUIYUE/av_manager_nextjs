@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { logWithTimestamp, errorWithTimestamp } from '@/utils/logger'; // 导入日志工具
+import { devWithTimestamp } from '@/utils/logger'; // 导入日志工具
 
 // 定义更详细的错误类型
 interface VideoError {
@@ -542,7 +542,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const openInExplorer = async () => {
     try {
-      logWithTimestamp("video打开文件位置:", filepath);
+      devWithTimestamp("video打开文件位置:", filepath);
       const response = await fetch("/api/open-file", {
         method: "POST",
         headers: {
@@ -558,10 +558,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const data = await response.json();
       const message = data.message;
       if (message) {
-        logWithTimestamp(message);
+        devWithTimestamp(message);
       }
     } catch (error) {
-      errorWithTimestamp("打开文件位置出错:", error);
+      devWithTimestamp("打开文件位置出错:", error);
       alert(error instanceof Error ? error.message : "无法打开文件位置");
     }
   };

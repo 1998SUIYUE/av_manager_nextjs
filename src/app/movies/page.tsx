@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
-import { errorWithTimestamp, logWithTimestamp } from "@/utils/logger";
+import {  devWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer"; // 导入 VideoPlayer 组件
 
 interface MovieData {
@@ -89,7 +89,7 @@ const MoviesPage = () => {
       setTotalMovies(data.total);
       
     } catch (e: unknown) {
-      errorWithTimestamp("Error fetching movies:", e);
+      devWithTimestamp("Error fetching movies:", e);
       setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
@@ -127,7 +127,7 @@ const MoviesPage = () => {
     }
 
     try {
-      logWithTimestamp(`[MoviesPage] 尝试删除电影: ${filePath}`);
+      devWithTimestamp(`[MoviesPage] 尝试删除电影: ${filePath}`);
       const response = await fetch("/api/movies/delete-file", {
         method: "DELETE",
         headers: {
@@ -141,7 +141,7 @@ const MoviesPage = () => {
         throw new Error(errorData.error || "删除文件失败");
       }
 
-      logWithTimestamp(`[MoviesPage] 电影删除成功: ${filePath}`);
+      devWithTimestamp(`[MoviesPage] 电影删除成功: ${filePath}`);
       alert(`电影 "${filename || filePath}" 已成功删除。`);
       setShowVideoPlayer(false); // 关闭视频播放器
       
@@ -152,7 +152,7 @@ const MoviesPage = () => {
       // 可选：如果当前页面电影数量太少，可以尝试加载更多
       // 这里我们简化处理，只是移除已删除的项目
     } catch (error) {
-      errorWithTimestamp(`[MoviesPage] 删除电影时发生错误: ${filePath}`, error);
+      devWithTimestamp(`[MoviesPage] 删除电影时发生错误: ${filePath}`, error);
       alert(error instanceof Error ? error.message : "删除电影时发生错误");
     }
   }, [fetchMovies]);
@@ -173,7 +173,7 @@ const MoviesPage = () => {
     const totalMoviesCount = availableMovies.length;
     const ratedPercentage = totalMoviesCount > 0 ? (ratedMoviesCount / totalMoviesCount) * 100 : 0;
     
-    logWithTimestamp(`[startComparison] 当前评分统计: ${ratedMoviesCount}/${totalMoviesCount} 部影片已评分 (${ratedPercentage.toFixed(1)}%)`);
+    devWithTimestamp(`[startComparison] 当前评分统计: ${ratedMoviesCount}/${totalMoviesCount} 部影片已评分 (${ratedPercentage.toFixed(1)}%)`);
     
     // 智能选择算法
     let selectedMovieA: MovieData;
@@ -185,7 +185,7 @@ const MoviesPage = () => {
     if (unratedMovies.length > 0) {
       // 如果有未评分的影片，优先选择一部作为A
       selectedMovieA = unratedMovies[Math.floor(Math.random() * unratedMovies.length)];
-      logWithTimestamp(`[startComparison] 选择了未评分的影片A: ${selectedMovieA.code}`);
+      devWithTimestamp(`[startComparison] 选择了未评分的影片A: ${selectedMovieA.code}`);
       
       // 对于B，我们有50%的概率选择另一部未评分的影片，50%的概率选择已评分的影片
       const otherUnratedMovies = unratedMovies.filter(m => m.code !== selectedMovieA.code);
@@ -194,17 +194,17 @@ const MoviesPage = () => {
       if (otherUnratedMovies.length > 0 && (ratedMovies.length === 0 || Math.random() < 0.5)) {
         // 选择另一部未评分的影片
         selectedMovieB = otherUnratedMovies[Math.floor(Math.random() * otherUnratedMovies.length)];
-        logWithTimestamp(`[startComparison] 选择了未评分的影片B: ${selectedMovieB.code}`);
+        devWithTimestamp(`[startComparison] 选择了未评分的影片B: ${selectedMovieB.code}`);
       } else if (ratedMovies.length > 0) {
         // 选择一部已评分的影片
         selectedMovieB = ratedMovies[Math.floor(Math.random() * ratedMovies.length)];
-        logWithTimestamp(`[startComparison] 选择了已评分的影片B: ${selectedMovieB.code} (已进行${selectedMovieB.matchCount}次评分)`);
+        devWithTimestamp(`[startComparison] 选择了已评分的影片B: ${selectedMovieB.code} (已进行${selectedMovieB.matchCount}次评分)`);
       } else {
         // 如果没有其他未评分的影片，随机选择一部不同的影片
         do {
           selectedMovieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
         } while (selectedMovieB.code === selectedMovieA.code);
-        logWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
+        devWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
       }
     } else {
       // 2. 如果所有影片都已评分，则选择评分次数最少的影片作为A
@@ -215,7 +215,7 @@ const MoviesPage = () => {
       const leastRatedMovies = availableMovies.slice(0, leastRatedCount);
       
       selectedMovieA = leastRatedMovies[Math.floor(Math.random() * leastRatedMovies.length)];
-      logWithTimestamp(`[startComparison] 所有影片都已评分，选择了评分次数较少的影片A: ${selectedMovieA.code} (已进行${selectedMovieA.matchCount}次评分)`);
+      devWithTimestamp(`[startComparison] 所有影片都已评分，选择了评分次数较少的影片A: ${selectedMovieA.code} (已进行${selectedMovieA.matchCount}次评分)`);
       
       // 对于B，避免选择最近已经与A对比过的影片
       const recentMatches = selectedMovieA.recentMatches || [];
@@ -225,13 +225,13 @@ const MoviesPage = () => {
       
       if (availableForB.length > 0) {
         selectedMovieB = availableForB[Math.floor(Math.random() * availableForB.length)];
-        logWithTimestamp(`[startComparison] 选择了未在最近与A对比过的影片B: ${selectedMovieB.code}`);
+        devWithTimestamp(`[startComparison] 选择了未在最近与A对比过的影片B: ${selectedMovieB.code}`);
       } else {
         // 如果所有影片都与A对比过，随机选择一部不同的影片
         do {
           selectedMovieB = availableMovies[Math.floor(Math.random() * availableMovies.length)];
         } while (selectedMovieB.code === selectedMovieA.code);
-        logWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
+        devWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
       }
     }
     
@@ -245,9 +245,9 @@ const MoviesPage = () => {
     // 显示评分进度
     const remainingUnrated = unratedMovies.length;
     if (remainingUnrated > 0) {
-      logWithTimestamp(`[startComparison] 评分进度: 还有 ${remainingUnrated} 部影片未评分`);
+      devWithTimestamp(`[startComparison] 评分进度: 还有 ${remainingUnrated} 部影片未评分`);
     } else {
-      logWithTimestamp(`[startComparison] 评分进度: 所有影片都已至少评分一次`);
+      devWithTimestamp(`[startComparison] 评分进度: 所有影片都已至少评分一次`);
     }
   }, [movies, totalMovies]);
 
