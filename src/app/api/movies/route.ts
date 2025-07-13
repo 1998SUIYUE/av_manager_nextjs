@@ -18,17 +18,7 @@ const FILE_SIZE_THRESHOLD = 100 * 1024 * 1024;
 
 // 请求延迟时间（毫秒），用于在获取电影元数据时避免频繁请求被网站屏蔽
 
-/**
- * 将电影添加到元数据获取队列
- * @param code 电影番号
- * @param baseUrl 基础URL
- * @param priority 优先级（1=高，2=中，3=低）
- */
-function queueMetadataFetch(code: string, baseUrl: string, priority: number = 2) {
-  // 这里应该有队列处理逻辑，但由于找不到原始实现，我们只记录日志
-  devWithTimestamp(`[queueMetadataFetch] 添加番号 ${code} 到元数据获取队列，优先级: ${priority}`);
-  // 在实际实现中，这里应该将任务添加到队列中
-}
+
 
 // 定义电影文件接口，包含各种电影元数据属性
 interface MovieFile {
@@ -119,9 +109,20 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
   try {
     devWithTimestamp(`[fetchCoverUrl] 开始获取番号 ${code} 的封面图片和标题`);
 
-    // 启动无头模式的 Chromium 浏览器
+    // 启动无头模式的 Chromium 浏览器，添加内存限制参数
     browser = await chromium.launch({
       headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // 减少共享内存使用
+        '--disable-gpu',
+        '--memory-pressure-off',
+        '--max_old_space_size=512', // 限制内存使用到512MB
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+      ]
     });
     // devWithTimestamp(`[fetchCoverUrl] 浏览器启动成功`);
 
@@ -139,10 +140,10 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     devWithTimestamp(`[fetchCoverUrl] 开始访问 URL: ${url}`);
 
     try {
-      // 导航到搜索结果页，等待 DOM 内容加载完成
+      // 导航到搜索结果页，等待 DOM 内容加载完成，减少超时时间
       await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 10000,
+        timeout: 6000, // 进一步减少超时时间
       });
       // devWithTimestamp(`[fetchCoverUrl] 页面加载完成`);
 
@@ -158,7 +159,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       // 导航到电影详情页
       await page.goto(`https://javdb.com${right_url}`, {
         waitUntil: "domcontentloaded",
-        timeout: 10000,
+        timeout: 6000, // 进一步减少超时时间
       });
       devWithTimestamp(
         `[fetchCoverUrl] 找到正确的URL: https://javdb.com${right_url}`
@@ -203,7 +204,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
             devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
             // 如果代理失败，可以考虑使用默认图片或者保留原始URL
           }
-        } catch (proxyError) {
+        } catch (proxyError: unknown) {
           devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
         }
       }
@@ -260,7 +261,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         title,
         actress,
       };
-    } catch (navigationError) {
+    } catch (navigationError: unknown) {
       devWithTimestamp(`[fetchCoverUrl] 页面导航错误:`, navigationError);
       
       // 即使导航出错，也尝试使用备用封面URL
@@ -280,7 +281,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
           await updateMovieMetadataCache(code, localCoverUrl, null, null);
           return { coverUrl: localCoverUrl, title: null, actress: null };
         }
-      } catch (proxyError) {
+              } catch (proxyError: unknown) {
         devWithTimestamp(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
       }
       
@@ -324,101 +325,209 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
  * @returns 包含封面信息和去重后的电影文件数组。
  */
 async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
+  const startTime = Date.now(); // 开始计时
+  
+  // 内存监控函数
+  function checkMemoryUsage() {
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
+    const rssMB = memUsage.rss / 1024 / 1024;
+    
+    devWithTimestamp(`[processMovieFiles] 内存使用 - Heap: ${heapUsedMB.toFixed(2)}MB, RSS: ${rssMB.toFixed(2)}MB`);
+    
+    // 如果内存使用超过800MB，触发垃圾回收
+    if (rssMB > 800) {
+      devWithTimestamp(`[processMovieFiles] 警告: 内存使用过高 (${rssMB.toFixed(2)}MB)，触发垃圾回收`);
+      if (global.gc) {
+        global.gc();
+      }
+      return false; // 返回false表示内存压力大
+    }
+    return true;
+  }
+
   // 根据文件最后修改时间降序排序电影文件 (最新的在前)
   const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
-  // 当前未限制处理文件数量 (todo: 可根据需要限制前N个文件)
-  const limitedMovies = sortedMovies;
+  // 限制处理文件数量，避免一次性处理过多文件导致系统崩溃
+  const maxFilesToProcess = 30; // 进一步减少到30个文件
+  const limitedMovies = sortedMovies.slice(0, maxFilesToProcess);
+  
+  if (sortedMovies.length > maxFilesToProcess) {
+    devWithTimestamp(`[processMovieFiles] 警告: 发现 ${sortedMovies.length} 个文件，但只处理前 ${maxFilesToProcess} 个以避免系统过载`);
+  }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 3;// 同时允许的最大请求数
+  const concurrencyLimit = 2;// 适度提高并发数以提升速度
   const semaphore = new Semaphore(concurrencyLimit);
+  
+  // 启动内存监控
+  const memoryCheckInterval = setInterval(checkMemoryUsage, 5000);
+  
+  // 批处理大小（增加批处理大小提高效率）
+  const batchSize = 8;
 
-  // 使用 Promise.all 来并行处理电影文件，每个文件都会尝试获取其元数据
-  const processedMovies = await Promise.all(
-    limitedMovies.map(async (movie) => {
-      // 在发送网络请求前，先通过信号量获取许可，控制并发
-      return semaphore.acquire().then(async (release) => {
-        try {
-          let coverUrl = null;
-          let title = null;
-          let actress = null;
-          // 如果电影文件有番号，则尝试获取其封面和标题
-          if (movie.code) {
-            try {
-              // 首先尝试从缓存获取元数据
-              const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
-              
-              // 检查是否需要获取元数据
-              const needsFetch = !cachedMetadata || !cachedMetadata.coverUrl;
-              
-              // 如果没有封面或标题，则添加到自动获取队列
-              if (needsFetch) {
-                // 添加到后台处理队列，优先级为2（中）
-                queueMetadataFetch(movie.code, baseUrl, 2);
-                devWithTimestamp(`[processMovieFiles] 电影 ${movie.code} 缺少元数据，已添加到自动获取队列`);
-              }
-              
-              // 无论是否有缓存，都尝试获取最新的封面信息
-              // 如果缓存中有封面，fetchCoverUrl会直接返回缓存数据
-              // 如果缓存中没有封面，fetchCoverUrl会尝试从网络获取
-              // 使用 retryWithTimeout 包装 fetchCoverUrl，提供重试和超时功能
-              const result = await retryWithTimeout(
-                () => fetchCoverUrl(movie.code!, baseUrl),
-                2, // 最大重试次数
-                3000 // 每次重试的超时时间（毫秒）
-              );
-              coverUrl = result.coverUrl;
-              title = result.title;
-              actress = result.actress;
-            } catch (error) {
-              devWithTimestamp(`处理电影 ${movie.filename} 时发生错误:`, error);
-            }
-          }
-
-          // 获取评分数据
-          let eloData = null;
-          if (movie.code) {
-            try {
-              const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
-              if (cachedMetadata && cachedMetadata.elo !== undefined) {
-                eloData = {
-                  elo: cachedMetadata.elo,
-                  matchCount: cachedMetadata.matchCount || 0,
-                  winCount: cachedMetadata.winCount || 0,
-                  drawCount: cachedMetadata.drawCount || 0,
-                  lossCount: cachedMetadata.lossCount || 0,
-                  winRate: cachedMetadata.matchCount ? 
-                    (cachedMetadata.winCount || 0) / cachedMetadata.matchCount : 0
-                };
-              }
-            } catch (error) {
-              devWithTimestamp(error)
-              // 忽略评分数据获取错误
-            }
-          }
-
-          // 返回包含所有元数据（包括新获取的封面、标题、女优、评分）的电影对象
-          return {
+  // 分批处理电影文件，避免一次性处理过多导致内存溢出
+  const processedMovies: MovieFile[] = [];
+  
+  // 预先检查缓存，分离需要网络请求的文件
+  const cachedMovies: MovieFile[] = [];
+  const needsFetchMovies: MovieFile[] = [];
+  
+  for (const movie of limitedMovies) {
+    if (movie.code) {
+      try {
+        const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
+        if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
+          // 有完整缓存，直接添加到结果（包含Elo评分数据）
+          const eloData = cachedMetadata.elo !== undefined ? {
+            elo: cachedMetadata.elo,
+            matchCount: cachedMetadata.matchCount || 0,
+            winCount: cachedMetadata.winCount || 0,
+            drawCount: cachedMetadata.drawCount || 0,
+            lossCount: cachedMetadata.lossCount || 0,
+            winRate: cachedMetadata.matchCount ? 
+              (cachedMetadata.winCount || 0) / cachedMetadata.matchCount : 0
+          } : {};
+          
+          cachedMovies.push({
             ...movie,
-            coverUrl,
-            displayTitle: title || movie.title,
-            actress,
-            ...(eloData && {
-              elo: eloData.elo,
-              matchCount: eloData.matchCount,
-              winCount: eloData.winCount,
-              drawCount: eloData.drawCount,
-              lossCount: eloData.lossCount,
-              winRate: eloData.winRate
-            })
-          };
-        } finally {
-          release(); // 释放信号量，允许下一个请求执行
+            coverUrl: cachedMetadata.coverUrl,
+            displayTitle: cachedMetadata.title,
+            actress: cachedMetadata.actress,
+            ...eloData
+          });
+        } else {
+          needsFetchMovies.push(movie);
+        }
+      } catch{
+        needsFetchMovies.push(movie);
+      }
+    } else {
+      cachedMovies.push(movie); // 没有番号的直接添加
+    }
+  }
+  
+  devWithTimestamp(`[processMovieFiles] 🚀 性能优化: 缓存命中 ${cachedMovies.length}个, 需要网络获取 ${needsFetchMovies.length}个 (节省 ${Math.round((cachedMovies.length / limitedMovies.length) * 100)}% 网络请求)`);
+  
+  // 先添加缓存的电影
+  processedMovies.push(...cachedMovies);
+  
+  try {
+    // 只处理需要网络请求的文件
+    for (let i = 0; i < needsFetchMovies.length; i += batchSize) {
+      const batch = needsFetchMovies.slice(i, i + batchSize);
+      devWithTimestamp(`[processMovieFiles] 处理网络请求批次 ${Math.floor(i/batchSize) + 1}/${Math.ceil(needsFetchMovies.length/batchSize)}, 文件数: ${batch.length}`);
+      
+      // 检查内存使用情况
+      if (!checkMemoryUsage()) {
+        devWithTimestamp(`[processMovieFiles] 内存压力过大，暂停处理`);
+        break;
+      }
+      
+      // 处理当前批次
+      const batchResults = await Promise.allSettled(
+        batch.map(async (movie) => {
+          // 在发送网络请求前，先通过信号量获取许可，控制并发
+          return semaphore.acquire().then(async (release) => {
+            try {
+              let coverUrl = null;
+              let title = null;
+              let actress = null;
+              // 如果电影文件有番号，则尝试获取其封面和标题
+              if (movie.code) {
+                try {
+                  // 首先尝试从缓存获取元数据
+                  const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
+                  
+                  // 如果缓存中有完整数据，直接使用，避免网络请求
+                  if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
+                    coverUrl = cachedMetadata.coverUrl;
+                    title = cachedMetadata.title;
+                    actress = cachedMetadata.actress;
+                    devWithTimestamp(`[processMovieFiles] 从缓存获取 ${movie.code} 的完整元数据`);
+                  } else {
+                    // 只有在缓存不完整时才进行网络请求
+                    devWithTimestamp(`[processMovieFiles] 缓存不完整，获取 ${movie.code} 的网络元数据`);
+                    
+                    // 使用 retryWithTimeout 包装 fetchCoverUrl，提供重试和超时功能
+                    const result = await retryWithTimeout(
+                      () => fetchCoverUrl(movie.code!, baseUrl),
+                      1, // 减少重试次数
+                      8000 // 适当的超时时间
+                    );
+                    coverUrl = result.coverUrl;
+                    title = result.title;
+                    actress = result.actress;
+                  }
+                } catch (error) {
+                  devWithTimestamp(`处理电影 ${movie.filename} 时发生错误:`, error);
+                }
+              }
+
+              // 获取评分数据
+              let eloData = null;
+              if (movie.code) {
+                try {
+                  const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
+                  if (cachedMetadata && cachedMetadata.elo !== undefined) {
+                    eloData = {
+                      elo: cachedMetadata.elo,
+                      matchCount: cachedMetadata.matchCount || 0,
+                      winCount: cachedMetadata.winCount || 0,
+                      drawCount: cachedMetadata.drawCount || 0,
+                      lossCount: cachedMetadata.lossCount || 0,
+                      winRate: cachedMetadata.matchCount ? 
+                        (cachedMetadata.winCount || 0) / cachedMetadata.matchCount : 0
+                    };
+                  }
+                } catch (error) {
+                  devWithTimestamp(error)
+                  // 忽略评分数据获取错误
+                }
+              }
+
+              // 返回包含所有元数据（包括新获取的封面、标题、女优、评分）的电影对象
+              return {
+                ...movie,
+                coverUrl,
+                displayTitle: title || movie.title,
+                actress,
+                ...(eloData && {
+                  elo: eloData.elo,
+                  matchCount: eloData.matchCount,
+                  winCount: eloData.winCount,
+                  drawCount: eloData.drawCount,
+                  lossCount: eloData.lossCount,
+                  winRate: eloData.winRate
+                })
+              };
+            } finally {
+              release(); // 释放信号量，允许下一个请求执行
+            }
+          });
+        })
+      );
+      
+      // 收集成功的结果
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          processedMovies.push(result.value);
+        } else {
+          devWithTimestamp(`[processMovieFiles] 处理失败:`, result.reason);
+          processedMovies.push(batch[index]); // 添加原始数据作为后备
         }
       });
-    })
-  );
+      
+      // 批次间延迟，给系统喘息时间（减少延迟提高速度）
+      if (i + batchSize < needsFetchMovies.length) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // 从3秒减少到0.5秒
+      }
+    }
+  } finally {
+    // 清理内存监控
+    clearInterval(memoryCheckInterval);
+  }
 
   // 检测并记录重复的电影文件 (基于电影番号)
   const duplicateMovies: MovieFile[] = [];
@@ -444,6 +553,18 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   } else {
     console.log("没有检测到重复文件");
   }
+  // 性能统计
+  const endTime = Date.now();
+  const totalTime = (endTime - startTime) / 1000; // 转换为秒
+  const avgTimePerMovie = totalTime / processedMovies.length;
+  
+  devWithTimestamp(`[processMovieFiles] 🎯 性能统计:`);
+  devWithTimestamp(`  ⏱️  总处理时间: ${totalTime.toFixed(2)}秒`);
+  devWithTimestamp(`  📊 处理文件数: ${processedMovies.length}个`);
+  devWithTimestamp(`  ⚡ 平均每个文件: ${avgTimePerMovie.toFixed(2)}秒`);
+  devWithTimestamp(`  💾 缓存命中率: ${Math.round((cachedMovies.length / limitedMovies.length) * 100)}%`);
+  devWithTimestamp(`  🌐 网络请求数: ${needsFetchMovies.length}个`);
+  
   console.log(
     "项目路径: https://localhost:3000"
   );
@@ -668,8 +789,8 @@ async function getStoredDirectory(): Promise<string> {
     devWithTimestamp(`[getStoredDirectory] 成功读取目录: ${data.trim()}`);
     return data.trim(); // 返回清理后的目录路径
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (error) {
-    devWithTimestamp(`[getStoredDirectory] 未找到存储目录文件或读取失败:`, error);
+  } catch (_error) {
+    devWithTimestamp(`[getStoredDirectory] 未找到存储目录文件或读取失败:`, _error);
     return ""; // 读取失败或文件不存在时返回空字符串
   }
 }
