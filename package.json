@@ -10,8 +10,8 @@
     "lint": "next lint",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:pack": "electron-builder",
-    "build:electron": "npm run build && electron-builder",
-    "dist": "npm run build && npm run electron:pack",
+    "build:electron": "npm run build && npm run electron:pack",
+    "dist": "npm run clean && npm run build && npm run electron:pack",
     "clean": "rimraf .next"
   },
   "dependencies": {
@@ -21,7 +21,10 @@
     "playwright": "^1.49.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "styled-jsx": "^5.1.1"
+    "styled-jsx": "^5.1.1",
+    "electron-is-dev": "^2.0.0",
+    "find-free-port": "^2.0.0",
+    "cross-env": "^7.0.3"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -29,9 +32,6 @@
     "@types/react-dom": "^18",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
-    "electron-is-dev": "^2.0.0",
-    "find-free-port": "^2.0.0",
-    "cross-env": "^7.0.3",
     "eslint": "^8",
     "eslint-config-next": "15.0.3",
     "postcss": "^8",
@@ -42,38 +42,29 @@
     "appId": "com.yourcompany.avmanager",
     "productName": "AV Manager",
     "directories": {
-      "output": "dist",
+      "output": "release",
       "buildResources": "build"
     },
     "files": [
-      "main.js",
-      "preload.js", 
-      "splash.html",
-      ".next/**/*",
-      "package.json",
-      "public/**/*",
-      "!node_modules/**/*",
+      "**/*",
       "!src/**/*",
       "!.git/**/*",
-      "!*.md",
-      "!.eslintrc.json",
-      "!tsconfig.json"
-    ],
-    "extraResources": [
-      {
-        "from": "userData",
-        "to": "userData"
-      }
-    ],
-    "asarUnpack": [
-      "node_modules/next/**/*",
-      "node_modules/react/**/*",
-      "node_modules/react-dom/**/*",
-      "node_modules/styled-jsx/**/*"
+      "!userData/image-cache/**/*",
+      "!public/image-cache/**/*",
+      "!*.jpg",
+      "!*.jpeg",
+      "!*.png",
+      "!*.gif",
+      "!*.webp",
+      "!*.mp4",
+      "!*.mkv",
+      "!*.avi",
+      "!*.mov",
+      "!*.wmv",
+      "!*.webm"
     ],
     "win": {
-      "target": "portable",
-      "icon": "build/icon.ico"
+      "target": "portable"
     },
     "portable": {
       "artifactName": "AV-Manager-Portable.exe"

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { devWithTimestamp } from '@/utils/logger';
 import { getImageCachePath } from '@/utils/paths';
 
 // 图片缓存目录
@@ -62,7 +61,7 @@ export async function GET(
       status: 200,
       headers,
     });
-  } catch (error) {
+  } catch {
     // devWithTimestamp('[image-serve] 服务图片时发生错误:', error);
     return new NextResponse('服务器错误', { status: 500 });
   }

@@ -4,10 +4,11 @@ const isDev = require('electron-is-dev');
 const findFreePort = require('find-free-port');
 const path = require('path');
 const fs = require('fs');
+const { createServer } = require('http');
 
-let mainWindow;
-let splashWindow;
-let nextServer;
+let mainWindow = null;
+let splashWindow = null;
+let nextServer = null;
 let serverPort;
 
 // 获取用户数据目录（程序目录下）
@@ -15,42 +16,24 @@ function getUserDataPath() {
   if (isDev) {
     return path.join(__dirname, 'userData');
   }
-  return path.join(process.resourcesPath, 'userData');
-}
-
-// 获取应用缓存路径（系统标准位置）
-function getAppCachePath() {
-  const appName = 'AV-Manager';
-  const os = require('os');
-  
-  if (process.platform === 'win32') {
-    // Windows: C:\Users\用户名\AppData\Local\AV-Manager
-    return path.join(os.homedir(), 'AppData', 'Local', appName);
-  } else if (process.platform === 'darwin') {
-    // macOS: ~/Library/Caches/AV-Manager
-    return path.join(os.homedir(), 'Library', 'Caches', appName);
-  } else {
-    // Linux: ~/.cache/AV-Manager
-    return path.join(os.homedir(), '.cache', appName);
-  }
+  // 打包后使用 app.getPath('userData') 或程序目录
+  return path.join(path.dirname(process.execPath), 'userData');
 }
 
 // 确保用户数据目录存在
 function ensureUserDataDir() {
-  // 1. 确保程序目录下的用户数据目录存在（配置文件）
   const userDataPath = getUserDataPath();
   if (!fs.existsSync(userDataPath)) {
     fs.mkdirSync(userDataPath, { recursive: true });
   }
   
-  // 2. 创建图片缓存目录
+  // 确保图片缓存目录存在
   const imageCacheDir = path.join(userDataPath, 'image-cache');
   if (!fs.existsSync(imageCacheDir)) {
     fs.mkdirSync(imageCacheDir, { recursive: true });
   }
 }
 
-// 创建启动画面
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
     width: 400,
@@ -59,168 +42,144 @@ function createSplashWindow() {
     alwaysOnTop: true,
     transparent: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true
     }
   });
-  
+
   splashWindow.loadFile('splash.html');
-  return splashWindow;
-}
-
-// 更新启动进度
-function updateProgress(message, percentage) {
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('update-progress', { message, percentage });
-  }
-}
-
-// 等待服务器启动
-function waitForServer(url, timeout = 30000) {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    
-    function check() {
-      const http = require('http');
-      const urlParts = new URL(url);
-      
-      const req = http.request({
-        hostname: urlParts.hostname,
-        port: urlParts.port,
-        path: '/',
-        method: 'GET',
-        timeout: 1000
-      }, (res) => {
-        resolve();
-      });
-      
-      req.on('error', () => {
-        if (Date.now() - startTime > timeout) {
-          reject(new Error('Server startup timeout'));
-        } else {
-          setTimeout(check, 1000);
-        }
-      });
-      
-      req.end();
-    }
-    
-    check();
-  });
-}
-
-async function startNextServer() {
-  updateProgress('正在寻找可用端口...', 10);
   
-  try {
-    // 1. 寻找可用端口
-    const ports = await findFreePort(3000, 3100);
-    serverPort = Array.isArray(ports) ? ports[0] : ports;
-    
-    updateProgress('正在启动服务器...', 30);
-    
-    // 2. 设置环境变量
-    const env = {
-      ...process.env,
-      PORT: serverPort.toString(),
-      NODE_ENV: isDev ? 'development' : 'production',
-      USER_DATA_PATH: getUserDataPath(),
-      APP_CACHE_PATH: getAppCachePath()
-    };
-    
-    // 3. 启动 Next.js 服务器
-    const nextCommand = isDev ? 'npm' : 'npm';
-    const nextArgs = isDev ? ['run', 'dev'] : ['run', 'start'];
-    
-    nextServer = spawn(nextCommand, nextArgs, { 
-      env,
-      cwd: __dirname,
-      stdio: isDev ? 'inherit' : 'pipe'
-    });
-    
-    updateProgress('等待服务器响应...', 60);
-    
-    // 4. 等待服务器启动
-    await waitForServer(`http://localhost:${serverPort}`);
-    
-    updateProgress('服务器启动完成', 90);
-  } catch (error) {
-    console.error('Failed to start Next.js server:', error);
-    updateProgress('启动失败', 0);
-    throw error;
-  }
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
 }
 
 function createWindow() {
-  updateProgress('正在创建应用窗口...', 95);
-  
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
-    show: false, // 先隐藏，等加载完成再显示
+    width: 1200,
+    height: 800,
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  const startUrl = isDev 
+    ? `http://localhost:${serverPort}` 
+    : `http://localhost:${serverPort}`;
   
-  mainWindow.loadURL(`http://localhost:${serverPort}`);
-  
-  // 窗口加载完成后显示主窗口，关闭启动画面
+  mainWindow.loadURL(startUrl);
+
   mainWindow.once('ready-to-show', () => {
-    updateProgress('启动完成', 100);
-    setTimeout(() => {
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.close();
-        splashWindow = null;
-      }
-      mainWindow.show();
-    }, 500);
+    if (splashWindow) {
+      splashWindow.close();
+    }
+    mainWindow.show();
+    
+    if (isDev) {
+      mainWindow.webContents.openDevTools();
+    }
   });
-  
-  // 主窗口关闭时的处理
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// IPC 处理（如果需要的话可以保留）
+async function startNextServer() {
+  try {
+    const ports = await findFreePort(3000, 3100);
+    serverPort = Array.isArray(ports) ? ports[0] : ports;
+    
+    if (isDev) {
+      // 开发模式：启动 Next.js 开发服务器
+      nextServer = spawn('npm', ['run', 'dev'], {
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, PORT: serverPort.toString() }
+      });
+      
+      // 等待服务器启动
+      await waitForServer(serverPort);
+    } else {
+      // 生产模式：启动 Next.js 生产服务器
+      nextServer = spawn('npm', ['start'], {
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, PORT: serverPort.toString() }
+      });
+      
+      // 等待服务器启动
+      await waitForServer(serverPort);
+    }
+  } catch (error) {
+    console.error('启动 Next.js 服务器失败:', error);
+    app.quit();
+  }
+}
+
+function waitForServer(port) {
+  return new Promise((resolve, reject) => {
+    const checkServer = () => {
+      const server = createServer();
+      server.listen(port, 'localhost', () => {
+        server.close();
+        resolve();
+      });
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(); // 端口已被使用，说明服务器已启动
+        } else {
+          setTimeout(checkServer, 1000);
+        }
+      });
+    };
+    
+    setTimeout(checkServer, 2000); // 给 Next.js 一些启动时间
+  });
+}
+
+// IPC 处理程序
 ipcMain.handle('get-user-data-path', () => {
   return getUserDataPath();
 });
 
-ipcMain.handle('get-app-cache-path', () => {
-  return getAppCachePath();
+ipcMain.handle('select-folder', async () => {
+  const { dialog } = require('electron');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
 });
 
-// 应用启动
-app.whenReady().then(async () => {
+ipcMain.handle('open-file', async (event, filePath) => {
+  const { shell } = require('electron');
   try {
-    // 确保用户数据目录存在
-    ensureUserDataDir();
-    
-    // 创建启动画面
-    createSplashWindow();
-    
-    // 启动 Next.js 服务器
-    await startNextServer();
-    
-    // 创建主窗口
-    createWindow();
+    await shell.openPath(filePath);
+    return { success: true };
   } catch (error) {
-    console.error('Application startup failed:', error);
-    app.quit();
+    return { success: false, error: error.message };
   }
+});
+
+app.whenReady().then(async () => {
+  ensureUserDataDir();
+  createSplashWindow();
+  await startNextServer();
+  createWindow();
 });
 
 app.on('window-all-closed', () => {
-  // 关闭 Next.js 服务器
-  if (nextServer) {
-    nextServer.kill();
-  }
-  
   if (process.platform !== 'darwin') {
+    if (nextServer && typeof nextServer.kill === 'function') {
+      nextServer.kill();
+    }
     app.quit();
   }
 });
@@ -231,9 +190,8 @@ app.on('activate', () => {
   }
 });
 
-// 应用退出时清理
 app.on('before-quit', () => {
-  if (nextServer) {
+  if (nextServer && typeof nextServer.kill === 'function') {
     nextServer.kill();
   }
 });
