@@ -1,7 +1,8 @@
 {
-  "name": "my-nextjs-app",
+  "name": "AV_Manager",
   "version": "0.1.0",
   "private": true,
+  "homepage": "./",
   "main": "main.js",
   "scripts": {
     "dev": "next dev",
@@ -48,12 +49,10 @@
       ".next/**/*",
       "main.js",
       "preload.js",
-      "splash.html",
       "standalone-server.js",
       "package.json",
-      "node_modules/next/**/*",
-      "node_modules/react/**/*",
-      "node_modules/react-dom/**/*",
+      "public/**/*",
+      "node_modules/**/*",
       "!userData/**/*",
       "!src/**/*",
       "!.git/**/*",
@@ -72,12 +71,13 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "public/icon.ico"
     },
     "portable": {
       "artifactName": "AV-Manager-Portable.exe"

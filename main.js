@@ -7,7 +7,6 @@ const fs = require('fs');
 const { createServer } = require('http');
 
 let mainWindow = null;
-let splashWindow = null;
 let nextServer = null;
 let serverPort;
 
@@ -50,31 +49,14 @@ function ensureUserDataDir() {
   }
 }
 
-function createSplashWindow() {
-  splashWindow = new BrowserWindow({
-    width: 400,
-    height: 300,
-    frame: false,
-    alwaysOnTop: true,
-    transparent: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
 
-  splashWindow.loadFile('splash.html');
-  
-  splashWindow.on('closed', () => {
-    splashWindow = null;
-  });
-}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    show: false,
+    show: true, // 直接显示窗口
+    icon: path.join(__dirname, 'public', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -89,9 +71,6 @@ function createWindow() {
   mainWindow.loadURL(startUrl);
 
   mainWindow.once('ready-to-show', () => {
-    if (splashWindow) {
-      splashWindow.close();
-    }
     mainWindow.show();
     
     if (isDev) {
@@ -276,28 +255,26 @@ app.whenReady().then(async () => {
   console.log('[main] 计算出的用户数据路径:', userDataPath);
   console.log('[main] 设置的环境变量 USER_DATA_PATH:', process.env.USER_DATA_PATH);
   
-  createSplashWindow();
   await startNextServer();
   createWindow();
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    if (nextServer && typeof nextServer.kill === 'function') {
-      nextServer.kill();
-    }
     app.quit();
   }
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
 });
 
 app.on('before-quit', () => {
   if (nextServer && typeof nextServer.kill === 'function') {
+    console.log('Attempting to kill Next.js server process...');
     nextServer.kill();
+    nextServer = null;
   }
 });
