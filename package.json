@@ -5,9 +5,9 @@
   "main": "main.js",
   "scripts": {
     
-    "dev": "powershell -Command \"Start-Process http://localhost:3000; next dev\"",
+    "dev": "powershell -Command \"Start-Process http://localhost:3000; & next dev\"",
     "build": "next build",
-    "start": "powershell -Command \"Start-Process http://localhost:3000;\" & next start  ",
+    "start": "powershell -Command \"Start-Process http://localhost:3000; & next start \"",
     "lint": "next lint",
     "electron": "electron .",
     "package": "electron-packager . MyNextJsApp --platform=win32 --arch=x64",
