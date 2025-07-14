@@ -75,7 +75,7 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
       <div className="p-3 space-y-2">
         {/* 标题 */}
         <div className="text-sm font-semibold text-white leading-tight">
-          {movie.filename || movie.displayTitle || movie.title}
+          {movie.displayTitle || movie.filename ||  movie.title}
         </div>
         
         {/* 番号和女优信息 */}
