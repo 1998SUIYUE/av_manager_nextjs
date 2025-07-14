@@ -107,7 +107,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
   try {
     // 2. 发送 HTTP 请求获取搜索结果页面
-    const searchUrl = `https://javdb.com/search?q=${code}&f=all`;
+    const searchUrl = `https://manko.fun/searchresult?by=Title&keyword=${code}`;
     const searchResponse = await axios.get(searchUrl, {
       headers: getBrowserHeaders(),
       timeout: 1000, // 增加超时时间到5秒
@@ -117,19 +117,15 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     if (searchResponse.status === 403) {
       throw new Error(`BLOCKED_403: 搜索请求被屏蔽 ${code}`);
     }
-
-
-
     const $search = cheerio.load(searchResponse.data);
-    const moviePageLink = $search("div.movie-list > div.item > a").first().attr("href");
+    const moviePageLink = $search("#app > div.min-h-screen.bg-gray-dark.text-white > main > div > div.grid.grid-cols-1.sm\:grid-cols-2.md\:grid-cols-3.lg\:grid-cols-4.xl\:grid-cols-6.gap-4 > div:nth-child(1) > div.relative.cursor-pointer.rounded-t-lg.overflow-hidden").attr("data-id");
 
     if (!moviePageLink) {
       throw new Error(`在搜索结果中未找到番号 ${code} 的链接`);
     }
 
-    const moviePageUrl = `https://javdb.com${moviePageLink}`;
+    const moviePageUrl = `https://manko.fun/movie-info/${moviePageLink}`;
     devWithTimestamp(`[fetchCoverUrl] 找到详情页链接: ${moviePageUrl}`);
-
     // 3. 请求电影详情页
     const pageResponse = await axios.get(moviePageUrl, {
       headers: {
@@ -143,14 +139,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     if (pageResponse.status === 403) {
       throw new Error(`BLOCKED_403: 详情页请求被屏蔽 ${code}`);
     }
-
-
     const $page = cheerio.load(pageResponse.data);
-
     // 4. 解析页面内容
-    let coverUrl = $page("div.column-video-cover img").attr("src") || null;
-    const title = $page("h2 > strong.current-title").text().trim() || null;
-    const actress = $page('strong:contains("演員:")').nextAll("span.value").first().text().trim() || "unknow";
+    let coverUrl = $page("#app > div.min-h-screen.bg-gray-dark.text-white > div > div.grid.grid-cols-1.lg\:grid-cols-2.gap-6.mb-8 > div.bg-gray-800.rounded-lg.p-4.flex.justify-center > img").attr("src") || null;
+    const title = $page("#app > div.min-h-screen.bg-gray-dark.text-white > div > div.mb-6 > div > h1").text().trim() || null;
+    const actress = $page('#app > div.min-h-screen.bg-gray-dark.text-white > div > div.grid.grid-cols-1.lg\:grid-cols-2.gap-6.mb-8 > div.bg-gray-800.rounded-lg.p-6.space-y-4 > div.space-y-3.text-lg > div:nth-child(6) > span > button').text().trim() || "unknow";
 
     // 5. 处理封面图片代理
     if (coverUrl) {
@@ -190,8 +183,6 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     return { coverUrl, title, actress };
 
   } catch{
-
-    
     return { coverUrl: null, title: null, actress: null };
   }
 }
