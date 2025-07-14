@@ -461,6 +461,7 @@ async function startNextServer() {
       console.log(`[startNextServer] - node_modules 存在: ${fs.existsSync(nodeModulesPath)}`);
       console.log(`[startNextServer] - package.json 存在: ${fs.existsSync(packageJsonPath)}`);
       
+      console.log('[startNextServer] 🚀 启动 Next.js 服务器进程...');
       nextServer = spawn('node', [serverScriptPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -485,10 +486,24 @@ async function startNextServer() {
         },
         // 设置工作目录为包含 server.js 的目录
         cwd: standaloneDir,
-        shell: true
+        shell: false,  // 不使用shell，直接启动node进程
+        detached: false  // 确保子进程与父进程关联
       });
 
-      console.log('[startNextServer] Next.js 进程已启动，PID:', nextServer.pid);
+      const serverPID = nextServer.pid;
+      console.log('[startNextServer] ✅ Next.js 进程已启动，PID:', serverPID);
+      
+      // 保存PID到全局变量和文件
+      global.nextServerPID = serverPID;
+      
+      // 将PID写入文件，以便后续查找
+      const pidFilePath = path.join(getUserDataPath(), 'server.pid');
+      try {
+        fs.writeFileSync(pidFilePath, serverPID.toString());
+        console.log('[startNextServer] 📝 PID已保存到文件:', pidFilePath);
+      } catch (error) {
+        console.log('[startNextServer] ⚠️ PID文件写入失败:', error.message);
+      }
 
       // 监听输出 - 添加更详细的日志
       nextServer.stdout.on('data', (data) => {
@@ -871,7 +886,135 @@ app.whenReady().then(async () => {
   console.log('[main] --- app.whenReady() 结束 ---');
 });
 
+// 通过端口杀死进程的函数
+function killServerByPort(port) {
+  console.log(`[killServer] 🔍 查找占用端口 ${port} 的进程...`);
+  
+  try {
+    // 使用 netstat 查找占用端口的进程
+    const { execSync } = require('child_process');
+    const result = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' });
+    
+    console.log(`[killServer] 📋 端口 ${port} 占用情况:`, result.trim());
+    
+    // 解析输出，提取PID
+    const lines = result.trim().split('\n');
+    const pids = new Set();
+    
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const pid = parseInt(parts[parts.length - 1]);
+        if (pid && !isNaN(pid)) {
+          pids.add(pid);
+        }
+      }
+    }
+    
+    console.log(`[killServer] 🎯 找到占用端口的进程PIDs:`, Array.from(pids));
+    
+    // 杀死所有占用端口的进程
+    let killedCount = 0;
+    for (const pid of pids) {
+      try {
+        process.kill(pid, 'SIGKILL');
+        console.log(`[killServer] 🛑 已杀死进程 PID: ${pid}`);
+        killedCount++;
+      } catch (error) {
+        console.log(`[killServer] ❌ 杀死进程 ${pid} 失败:`, error.message);
+      }
+    }
+    
+    return killedCount > 0;
+  } catch (error) {
+    console.log(`[killServer] ❌ 查找端口占用失败:`, error.message);
+    return false;
+  }
+}
+
+// 通过PID杀死进程的函数
+function killServerByPID() {
+  const pidFilePath = path.join(getUserDataPath(), 'server.pid');
+  let targetPID = null;
+  
+  // 优先使用内存中的PID
+  if (global.nextServerPID) {
+    targetPID = global.nextServerPID;
+    console.log('[killServer] 🎯 使用内存中的PID:', targetPID);
+  } 
+  // 其次从文件读取PID
+  else if (fs.existsSync(pidFilePath)) {
+    try {
+      targetPID = parseInt(fs.readFileSync(pidFilePath, 'utf8').trim());
+      console.log('[killServer] 📄 从文件读取PID:', targetPID);
+    } catch (error) {
+      console.log('[killServer] ❌ 读取PID文件失败:', error.message);
+    }
+  }
+  
+  if (targetPID) {
+    try {
+      // 检查进程是否存在
+      process.kill(targetPID, 0); // 0信号用于检查进程是否存在
+      console.log('[killServer] ✅ 找到目标进程，PID:', targetPID);
+      
+      // 强制杀死进程
+      process.kill(targetPID, 'SIGKILL');
+      console.log('[killServer] 🛑 已杀死服务器进程，PID:', targetPID);
+      
+      // 清理PID文件
+      if (fs.existsSync(pidFilePath)) {
+        fs.unlinkSync(pidFilePath);
+        console.log('[killServer] 🗑️ 已清理PID文件');
+      }
+      
+      // 清理全局变量
+      global.nextServerPID = null;
+      
+      return true;
+    } catch (error) {
+      if (error.code === 'ESRCH') {
+        console.log('[killServer] ℹ️ 进程已不存在，PID:', targetPID);
+      } else {
+        console.log('[killServer] ❌ 杀死进程失败:', error.message);
+      }
+      
+      // 清理无效的PID文件
+      if (fs.existsSync(pidFilePath)) {
+        fs.unlinkSync(pidFilePath);
+      }
+      global.nextServerPID = null;
+    }
+  } else {
+    console.log('[killServer] ⚠️ 未找到服务器PID');
+  }
+  
+  return false;
+}
+
 app.on('window-all-closed', () => {
+  console.log('[main] 🔄 所有窗口已关闭，清理资源...');
+  
+  // 首先通过端口杀死所有相关进程
+  const portKilled = killServerByPort(serverPort || 3000);
+  
+  // 然后通过PID杀死进程（如果还有的话）
+  const pidKilled = killServerByPID();
+  
+  // 最后尝试传统方式
+  if (!portKilled && !pidKilled && nextServer && !nextServer.killed) {
+    console.log('[main] 🔄 端口和PID方式都失败，尝试传统方式关闭进程...');
+    try {
+      nextServer.kill('SIGKILL');
+      nextServer = null;
+      console.log('[main] ✅ 传统方式关闭成功');
+    } catch (error) {
+      console.log('[main] ❌ 传统方式也失败:', error.message);
+    }
+  }
+  
+  console.log('[main] 🔚 AV Manager 应用正常退出');
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -883,10 +1026,47 @@ app.on('activate', () => {
     }
 });
 
-app.on('before-quit', () => {
-  if (nextServer && typeof nextServer.kill === 'function') {
-    console.log('Attempting to kill Next.js server process...');
-    nextServer.kill();
-    nextServer = null;
+// 应用退出前清理
+app.on('before-quit', (event) => {
+  console.log('[main] 🔄 应用即将退出，清理资源...');
+  
+  if (nextServer && !nextServer.killed) {
+    console.log('[main] 🛑 关闭 Next.js 服务器进程...');
+    
+    // 立即尝试优雅关闭
+    nextServer.kill('SIGTERM');
+    
+    // 设置一个标志，防止重复关闭
+    nextServer._isClosing = true;
+    
+    // 给进程一些时间优雅关闭
+    setTimeout(() => {
+      if (nextServer && !nextServer.killed && nextServer._isClosing) {
+        console.log('[main] ⚡ 强制关闭 Next.js 服务器进程...');
+        nextServer.kill('SIGKILL');
+        nextServer = null;
+      }
+      console.log('[main] 🔚 AV Manager 应用退出完成');
+    }, 1000); // 减少等待时间到1秒
+  } else {
+    console.log('[main] 🔚 AV Manager 应用退出完成');
   }
 });
+
+// 处理进程退出信号
+process.on('SIGINT', () => {
+  console.log('[main] 🔄 收到 SIGINT 信号，清理资源...');
+  if (nextServer && !nextServer.killed) {
+    nextServer.kill('SIGTERM');
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[main] 🔄 收到 SIGTERM 信号，清理资源...');
+  if (nextServer && !nextServer.killed) {
+    nextServer.kill('SIGTERM');
+  }
+  process.exit(0);
+});
+
