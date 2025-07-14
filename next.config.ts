@@ -10,7 +10,9 @@ const nextConfig: NextConfig = {
   
   output: 'standalone',
   
-  outputFileTracingRoot: path.join(__dirname, '../../'),
+  // 修复 Electron 环境下的静态资源路径
+  assetPrefix: isDev ? '' : '',
+  basePath: '',
   
   // 关闭请求日志
   logging: {

@@ -20,7 +20,6 @@
     "cheerio": "^1.0.0",
     "cross-env": "^7.0.3",
     "electron-is-dev": "^2.0.0",
-    "find-free-port": "^2.0.0",
     "next": "15.0.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -41,6 +40,7 @@
   "build": {
     "appId": "com.yourcompany.avmanager",
     "productName": "AV Manager",
+    "asar": false,
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -49,7 +49,6 @@
       ".next/**/*",
       "main.js",
       "preload.js",
-      "standalone-server.js",
       "package.json",
       "public/**/*",
       "node_modules/**/*",
@@ -66,7 +65,30 @@
       "!*.avi",
       "!*.mov",
       "!*.wmv",
-      "!*.webm"
+      "!*.webm",
+      "!.next/cache/**/*",
+      "!.next/trace",
+      "!node_modules/.cache/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "public",
+        "to": "standalone/public",
+        "filter": ["**/*"]
+      }
+    ],
+    "asarUnpack": [
+      ".next/standalone/node_modules/**/*"
     ],
     "win": {
       "target": [
