@@ -4,7 +4,7 @@
       "command": "pnpm",
       "args": ["dlx", "task-master-ai"],
       "env": {
-        "GOOGLE_API_KEY": "AIzaSyBJWX5NRSsyTL47Gq2zouZGOFg06lFTiwc"
+        "GOOGLE_API_KEY": ""
       }
     }
   }

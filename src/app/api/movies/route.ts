@@ -67,16 +67,9 @@ function parseMovieFilename(filename: string): {
  * 使用 axios 和 cheerio 获取元数据，替代 Playwright
  */
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  // 1. 检查缓存
-  const cachedMetadata = await getCachedMovieMetadata(code, baseUrl);
-  if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
-    return cachedMetadata;
-  }
-  if (cachedMetadata) {
-    devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 在缓存中找到，但信息不完整，将从网络获取`);
-  }
-
-  devWithTimestamp(`[fetchCoverUrl] 开始使用 axios 获取 ${code} 的元数据`);
+  // 按照用户逻辑：直接进行网络请求，不在这里检查缓存
+  // 缓存检查已经在processMovieFiles中完成
+  devWithTimestamp(`[fetchCoverUrl] 开始网络请求获取 ${code} 的元数据`);
 
   try {
     // 2. 发送 HTTP 请求获取搜索结果页面
@@ -85,7 +78,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 8000,
+      timeout: 1000, // 减少超时时间从8秒到1秒
     });
 
     const $search = cheerio.load(searchResponse.data);
@@ -103,7 +96,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 8000,
+      timeout: 1000, // 减少超时时间从8秒到1秒
     });
     const $page = cheerio.load(pageResponse.data);
 
@@ -120,8 +113,14 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         const imageProxyResponse = await fetch(proxyApiUrl);
         if (imageProxyResponse.ok) {
           const proxyData = await imageProxyResponse.json();
-          coverUrl = proxyData.imageUrl; // 更新为本地代理URL
-          devWithTimestamp(`[fetchCoverUrl] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`);
+          // 检查是否返回了占位符图片，如果是则不更新coverUrl
+          if (proxyData.imageUrl && !proxyData.imageUrl.includes('placeholder-image.svg')) {
+            coverUrl = proxyData.imageUrl; // 更新为本地代理URL
+            devWithTimestamp(`[fetchCoverUrl] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`);
+          } else {
+            devWithTimestamp(`[fetchCoverUrl] image-proxy 返回占位符图片，保持原始URL: ${coverUrl}`);
+            // 保持原始coverUrl，不使用占位符
+          }
         } else {
            devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
         }
@@ -132,8 +131,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
     // 6. 更新缓存并返回结果
     if (coverUrl || title || actress) {
-      devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${coverUrl}, 标题: ${title}, 女优: ${actress}`);
-      await updateMovieMetadataCache(code, coverUrl, title, actress);
+      // 确保不缓存占位符图片
+      const finalCoverUrl = (coverUrl && !coverUrl.includes('placeholder-image.svg')) ? coverUrl : null;
+      devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}`);
+      await updateMovieMetadataCache(code, finalCoverUrl, title, actress);
+      return { coverUrl: finalCoverUrl, title, actress };
     } else {
       devWithTimestamp(`[fetchCoverUrl] 番号 ${code} 处理失败 - 未获取到任何元数据`);
     }
@@ -197,7 +199,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   const sortedMovies = movieFiles.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   // 限制处理文件数量，避免一次性处理过多文件导致系统崩溃
-  const maxFilesToProcess = 30; // 进一步减少到30个文件
+  const maxFilesToProcess = 99999; // 合理的处理数量
   const limitedMovies = sortedMovies.slice(0, maxFilesToProcess);
   
   if (sortedMovies.length > maxFilesToProcess) {
@@ -217,7 +219,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   // 分批处理电影文件，避免一次性处理过多导致内存溢出
   const processedMovies: MovieFile[] = [];
   
-  // 预先检查缓存，分离需要网络请求的文件
+  // 按照用户逻辑：检查meta缓存，所有信息都不为null才算完整缓存
   const cachedMovies: MovieFile[] = [];
   const needsFetchMovies: MovieFile[] = [];
   
@@ -225,8 +227,15 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
     if (movie.code) {
       try {
         const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
-        if (cachedMetadata && cachedMetadata.coverUrl && cachedMetadata.title) {
-          // 有完整缓存，直接添加到结果
+        
+        // 检查缓存是否完整：所有关键信息都不为null
+        const hasCompleteCache = cachedMetadata && 
+          cachedMetadata.coverUrl !== null && 
+          cachedMetadata.title !== null && 
+          cachedMetadata.actress !== null;
+        
+        if (hasCompleteCache) {
+          // 缓存完整，直接使用缓存数据
           const eloData = cachedMetadata.elo !== undefined ? {
             elo: cachedMetadata.elo,
             matchCount: cachedMetadata.matchCount || 0,
@@ -240,25 +249,33 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
           cachedMovies.push({
             ...movie,
             coverUrl: cachedMetadata.coverUrl,
-            displayTitle: cachedMetadata.title,
+            displayTitle: cachedMetadata.title || undefined,
             actress: cachedMetadata.actress,
             ...eloData
           });
+          
+          devWithTimestamp(`[processMovieFiles] ✅ ${movie.code} 缓存完整，直接使用`);
         } else {
+          // 缓存不存在或信息不完整，需要网络请求
           needsFetchMovies.push(movie);
+          devWithTimestamp(`[processMovieFiles] 🔄 ${movie.code} 缓存不完整，需要网络请求`);
         }
       } catch {
         needsFetchMovies.push(movie);
+        devWithTimestamp(`[processMovieFiles] ❌ ${movie.code} 缓存读取失败，需要网络请求`);
       }
     } else {
-      cachedMovies.push(movie); // 没有番号的直接添加
+      // 没有番号的电影直接添加
+      cachedMovies.push(movie);
     }
   }
   
-  devWithTimestamp(`[processMovieFiles] 🚀 性能优化: 缓存命中 ${cachedMovies.length}个, 需要网络获取 ${needsFetchMovies.length}个 (节省 ${Math.round((cachedMovies.length / limitedMovies.length) * 100)}% 网络请求)`);
   
   // 先添加缓存的电影
   processedMovies.push(...cachedMovies);
+  
+  // 按照用户逻辑：不需要快速返回策略，直接处理所有电影
+  devWithTimestamp(`[processMovieFiles] 缓存命中 ${cachedMovies.length}个, 需要网络获取 ${needsFetchMovies.length}个`);
   
   try {
     // 只处理需要网络请求的文件
@@ -281,49 +298,57 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
               let coverUrl = null;
               let title = null;
               let actress = null;
+              let eloData: {
+                elo: number;
+                matchCount: number;
+                winCount: number;
+                drawCount: number;
+                lossCount: number;
+                winRate: number;
+              } | null = null;
+              
               // 如果电影文件有番号，则尝试获取其封面和标题
               if (movie.code) {
                 try {
                   const result = await retryWithTimeout(
-                    () => fetchCoverUrl(movie.code!, baseUrl),
-                    2, // 重试2次
-                    5000 // 5秒超时
+                    () => fetchCoverUrl(movie.code!, baseUrl), // 直接网络请求
+                    1, // 减少重试次数从2次到1次
+                    1000 // 减少超时时间从5秒到1秒
                   );
                   coverUrl = result.coverUrl;
                   title = result.title;
                   actress = result.actress;
+                  
+                  // 网络请求完成后，从缓存中获取评分数据（因为updateMovieMetadataCache可能包含评分信息）
+                  try {
+                    const updatedCachedMetadata = await getCachedMovieMetadata(movie.code!, baseUrl);
+                    if (updatedCachedMetadata && updatedCachedMetadata.elo !== undefined) {
+                      eloData = {
+                        elo: updatedCachedMetadata.elo,
+                        matchCount: updatedCachedMetadata.matchCount || 0,
+                        winCount: updatedCachedMetadata.winCount || 0,
+                        drawCount: updatedCachedMetadata.drawCount || 0,
+                        lossCount: updatedCachedMetadata.lossCount || 0,
+                        winRate: updatedCachedMetadata.matchCount ? 
+                          (updatedCachedMetadata.winCount || 0) / updatedCachedMetadata.matchCount : 0
+                      };
+                      devWithTimestamp(`[processMovieFiles] ✅ ${movie.code} 获取到评分数据: Elo=${eloData.elo}`);
+                    }
+                  } catch (eloError) {
+                    devWithTimestamp(`[processMovieFiles] ⚠️ ${movie.code} 获取评分数据失败:`, eloError);
+                  }
                 } catch (error) {
                   devWithTimestamp(`处理电影 ${movie.filename} 时发生错误:`, error);
                 }
               }
 
-              // 获取评分数据
-              let eloData = null;
-              if (movie.code) {
-                try {
-                  const cachedMetadata = await getCachedMovieMetadata(movie.code, baseUrl);
-                  if (cachedMetadata && cachedMetadata.elo !== undefined) {
-                    eloData = {
-                      elo: cachedMetadata.elo,
-                      matchCount: cachedMetadata.matchCount || 0,
-                      winCount: cachedMetadata.winCount || 0,
-                      drawCount: cachedMetadata.drawCount || 0,
-                      lossCount: cachedMetadata.lossCount || 0,
-                      winRate: cachedMetadata.matchCount ? 
-                        (cachedMetadata.winCount || 0) / cachedMetadata.matchCount : 0
-                    };
-                  }
-                } catch{
-                  // 忽略评分数据获取错误
-                }
-              }
-
-              // 返回包含所有元数据（包括新获取的封面、标题、女优、评分）的电影对象
+              // 返回包含所有元数据的电影对象（包括评分数据）
               return {
                 ...movie,
                 coverUrl,
                 displayTitle: title || movie.title,
                 actress,
+                // 添加评分数据
                 ...(eloData && {
                   elo: eloData.elo,
                   matchCount: eloData.matchCount,
@@ -352,8 +377,8 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
       
       // 批次间延迟，给系统喘息时间
       if (i + batchSize < needsFetchMovies.length) {
-        devWithTimestamp(`[processMovieFiles] 批次处理完成，延迟1秒...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        devWithTimestamp(`[processMovieFiles] 批次处理完成，延迟0秒...`);
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
   } finally {
@@ -461,18 +486,19 @@ class Semaphore {
   }
 }
 
+
 /**
  * 带重试和超时的函数装饰器。
  * @param fn 要执行的异步函数。
- * @param maxRetries 最大重试次数 (默认: 3)。
- * @param timeout 每次尝试的超时时间 (毫秒，默认: 10000)。
+ * @param maxRetries 最大重试次数 (默认: 1)。
+ * @param timeout 每次尝试的超时时间 (毫秒，默认: 3000)。
  * @returns 原始函数的 Promise 结果。
  * @throws 如果所有重试都失败，则抛出最后一个错误。
  */
 async function retryWithTimeout<T>(
   fn: () => Promise<T>,
-  maxRetries: number = 3,
-  timeout: number = 10000
+  maxRetries: number = 1, // 减少重试次数
+  timeout: number = 1000  // 减少超时时间
 ): Promise<T> {
   let lastError: Error | null = null;
 
@@ -483,22 +509,25 @@ async function retryWithTimeout<T>(
       return await Promise.race([
         fn(),
         new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error("操作超时")), timeout)
+          setTimeout(() => reject(new Error("请求超时")), timeout)
         ),
       ]);
     } catch (error) {
       devWithTimestamp(`第 ${attempt} 次尝试失败:`, error);
       lastError = error as Error;
 
-      // 指数退避策略：每次重试增加等待时间，以避免连续失败
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * Math.pow(2, attempt))
-      );
+      // 如果是网络错误或超时，快速失败
+     
+
+      // 短暂延迟后重试
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
   }
 
   // 所有重试尝试均失败，抛出最后一个错误
-  throw lastError || new Error("所有重试尝试均失败");
+  throw lastError || new Error("请求失败");
 }
 
 /**
@@ -508,9 +537,34 @@ async function retryWithTimeout<T>(
  */
 async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
   devWithTimestamp(`[scanMovieDirectory] 开始扫描目录: ${directoryPath}`);
+  
+  // 添加详细的目录扫描调试信息
+  devWithTimestamp(`[scanMovieDirectory] 详细调试信息:`);
+  devWithTimestamp(`[scanMovieDirectory] - 原始路径: "${directoryPath}"`);
+  devWithTimestamp(`[scanMovieDirectory] - 路径长度: ${directoryPath.length}`);
+  devWithTimestamp(`[scanMovieDirectory] - 路径类型: ${typeof directoryPath}`);
+  devWithTimestamp(`[scanMovieDirectory] - 原始路径是否存在: ${fs.existsSync(directoryPath)}`);
+  
   // 处理路径中的引号和反斜杠，确保路径格式正确
   const cleanPath = directoryPath.replace(/['"]/g, "").replace(/\\/g, "/");
   devWithTimestamp("[scanMovieDirectory] 清理后的路径:", cleanPath);
+  devWithTimestamp(`[scanMovieDirectory] - 清理后路径长度: ${cleanPath.length}`);
+  devWithTimestamp(`[scanMovieDirectory] - 清理后路径是否存在: ${fs.existsSync(cleanPath)}`);
+  
+  // 尝试不同的路径格式
+  const alternativePaths = [
+    directoryPath,
+    cleanPath,
+    directoryPath.replace(/\\/g, "/"),
+    directoryPath.replace(/\//g, "\\"),
+    path.normalize(directoryPath),
+    path.resolve(directoryPath)
+  ];
+  
+  devWithTimestamp(`[scanMovieDirectory] 尝试不同路径格式:`);
+  alternativePaths.forEach((altPath, index) => {
+    devWithTimestamp(`[scanMovieDirectory] - 格式${index + 1}: "${altPath}" 存在: ${fs.existsSync(altPath)}`);
+  });
   const movieFiles: MovieFile[] = []; // 用于存储扫描到的电影文件信息
 
   /**
@@ -615,14 +669,35 @@ const STORAGE_PATH = getMovieDirectoryPath();
  */
 async function getStoredDirectory(): Promise<string> {
   devWithTimestamp(`[getStoredDirectory] 尝试从 ${STORAGE_PATH} 读取存储目录`);
+  
+  // 添加详细的路径调试信息
+  devWithTimestamp(`[getStoredDirectory] 详细调试信息:`);
+  devWithTimestamp(`[getStoredDirectory] - STORAGE_PATH: ${STORAGE_PATH}`);
+  devWithTimestamp(`[getStoredDirectory] - 文件是否存在: ${fs.existsSync(STORAGE_PATH)}`);
+  devWithTimestamp(`[getStoredDirectory] - 父目录: ${path.dirname(STORAGE_PATH)}`);
+  devWithTimestamp(`[getStoredDirectory] - 父目录是否存在: ${fs.existsSync(path.dirname(STORAGE_PATH))}`);
+  
+  // 检查环境变量和路径计算
+  devWithTimestamp(`[getStoredDirectory] 环境变量检查:`);
+  devWithTimestamp(`[getStoredDirectory] - IS_ELECTRON: ${process.env.IS_ELECTRON}`);
+  devWithTimestamp(`[getStoredDirectory] - USER_DATA_PATH: ${process.env.USER_DATA_PATH}`);
+  devWithTimestamp(`[getStoredDirectory] - PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR}`);
+  devWithTimestamp(`[getStoredDirectory] - ELECTRON_RESOURCES_PATH: ${process.env.ELECTRON_RESOURCES_PATH}`);
+  devWithTimestamp(`[getStoredDirectory] - process.cwd(): ${process.cwd()}`);
+  devWithTimestamp(`[getStoredDirectory] - process.execPath: ${process.execPath}`);
+  
   try {
     // 尝试读取文件内容
     const data = await readFile(STORAGE_PATH, "utf-8");
-    devWithTimestamp(`[getStoredDirectory] 成功读取目录: ${data.trim()}`);
+    devWithTimestamp(`[getStoredDirectory] 成功读取目录: "${data}"`);
+    devWithTimestamp(`[getStoredDirectory] 内容长度: ${data.length}`);
+    devWithTimestamp(`[getStoredDirectory] 去空格后: "${data.trim()}"`);
+    devWithTimestamp(`[getStoredDirectory] 去空格后长度: ${data.trim().length}`);
     return data.trim(); // 返回清理后的目录路径
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (_error) {
-    devWithTimestamp(`[getStoredDirectory] 未找到存储目录文件或读取失败:`, _error);
+  } catch  {
+    devWithTimestamp(`[getStoredDirectory] 未找到存储目录文件或读取失败:`);
+    
     return ""; // 读取失败或文件不存在时返回空字符串
   }
 }
@@ -658,22 +733,51 @@ export async function GET(request: Request) {
     
 
     // 获取存储的电影目录
+    devWithTimestamp(`[GET] 开始获取存储的电影目录`);
     const movieDirectory = await getStoredDirectory();
+    devWithTimestamp(`[GET] 获取到的电影目录: "${movieDirectory}"`);
+    devWithTimestamp(`[GET] 目录是否为空: ${!movieDirectory}`);
+    devWithTimestamp(`[GET] 目录长度: ${movieDirectory ? movieDirectory.length : 0}`);
     
     if (!movieDirectory) {
       devWithTimestamp(`[GET] 未设置电影目录，返回 400 错误`);
       return NextResponse.json({ error: "No directory set" }, { status: 400 });
     }
-    // 清理目录路径
-    const cleanPath = movieDirectory.replace(/['"]/g, "").replace(/\\/g, "/");
-    devWithTimestamp(`[GET] 开始扫描电影目录: ${cleanPath}`);
-    // 扫描电影目录并获取所有电影数据
-    const allMovieFiles = await scanMovieDirectory(cleanPath, baseUrl);
-    devWithTimestamp(`[GET] 完成电影扫描，发现 ${allMovieFiles.length} 个文件`);
+    // 使用原始目录路径，不进行斜杠转换
+    devWithTimestamp(`[GET] 开始扫描电影目录`);
+    devWithTimestamp(`[GET] 原始目录路径: "${movieDirectory}"`);
+    devWithTimestamp(`[GET] 原始路径是否存在: ${fs.existsSync(movieDirectory)}`);
     
-    // 处理所有电影数据（获取封面等）
-    const processedMovies = await processMovieFiles(allMovieFiles, baseUrl);
-    devWithTimestamp(`[GET] 完成电影数据处理，返回 ${processedMovies.length} 条电影数据`);
+    // 尝试不同的路径格式来兼容各种情况
+    const pathVariants = [
+      movieDirectory,  // 原始路径
+      movieDirectory.replace(/['"]/g, "").trim(),  // 只清理引号
+      movieDirectory.replace(/\//g, "\\"),  // 转换为Windows格式
+      movieDirectory.replace(/\\/g, "/"),   // 转换为Unix格式
+      path.normalize(movieDirectory),       // 标准化路径
+      path.resolve(movieDirectory)          // 解析为绝对路径
+    ];
+    
+    devWithTimestamp(`[GET] 尝试不同路径格式:`);
+    let validPath = null;
+    for (let i = 0; i < pathVariants.length; i++) {
+      const variant = pathVariants[i];
+      const exists = fs.existsSync(variant);
+      devWithTimestamp(`[GET] - 格式${i + 1}: "${variant}" 存在: ${exists}`);
+      if (exists && !validPath) {
+        validPath = variant;
+        devWithTimestamp(`[GET] - 选择有效路径: "${validPath}"`);
+      }
+    }
+    
+    if (!validPath) {
+      devWithTimestamp(`[GET] 所有路径格式都无效，返回错误`);
+      return NextResponse.json({ error: "Directory not found", path: movieDirectory }, { status: 404 });
+    }
+    
+    // 扫描电影目录并获取所有电影数据（scanMovieDirectory内部已经调用了processMovieFiles）
+    const processedMovies = await scanMovieDirectory(validPath, baseUrl);
+    devWithTimestamp(`[GET] 完成电影扫描和处理，返回 ${processedMovies.length} 条电影数据`);
 
     // 对 finalMovies 进行额外的检查和警告
     processedMovies.forEach(movie => {
@@ -740,11 +844,15 @@ export async function POST(request: Request) {
     // 从请求体中解析 folderPath
     const { folderPath } = await request.json();
     devWithTimestamp("[POST] 接收到的原始路径:", folderPath);
-    // 清理路径
-    const cleanPath = folderPath.replace(/['"]/g, "").replace(/\\/g, "/");
+    devWithTimestamp("[POST] 路径类型:", typeof folderPath);
+    devWithTimestamp("[POST] 路径长度:", folderPath.length);
+    
+    // 只清理引号，保持原始路径格式（Windows路径需要保持反斜杠）
+    const cleanPath = folderPath.replace(/['"]/g, "").trim();
     devWithTimestamp("[POST] 处理后的路径:", cleanPath);
+    devWithTimestamp("[POST] 处理后路径是否存在:", fs.existsSync(cleanPath));
 
-    // 存储路径到文件
+    // 存储原始路径到文件（不进行斜杠转换）
     devWithTimestamp(`[POST] 尝试存储目录: ${cleanPath}`);
     await storeDirectory(cleanPath);
     devWithTimestamp(`[POST] 目录存储成功`);

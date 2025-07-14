@@ -851,6 +851,143 @@ app.whenReady().then(async () => {
   console.log('[main] process.execPath:', process.execPath);
   console.log('[main] process.resourcesPath:', process.resourcesPath);
   
+  // 添加详细的路径调试信息
+  try {
+    global.writeDebugLog('========== 详细路径调试开始 ==========');
+    global.writeDebugLog(`当前时间: ${new Date().toISOString()}`);
+    global.writeDebugLog(`isDev: ${isDev}`);
+    global.writeDebugLog(`process.execPath: ${process.execPath}`);
+    global.writeDebugLog(`process.resourcesPath: ${process.resourcesPath}`);
+    global.writeDebugLog(`__dirname: ${__dirname}`);
+    global.writeDebugLog(`process.cwd(): ${process.cwd()}`);
+    global.writeDebugLog(`process.platform: ${process.platform}`);
+    
+    // 检查环境变量
+    global.writeDebugLog('--- 环境变量检查 ---');
+    global.writeDebugLog(`NODE_ENV: ${process.env.NODE_ENV}`);
+    global.writeDebugLog(`IS_ELECTRON: ${process.env.IS_ELECTRON}`);
+    global.writeDebugLog(`USER_DATA_PATH: ${process.env.USER_DATA_PATH}`);
+    global.writeDebugLog(`PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR}`);
+    global.writeDebugLog(`ELECTRON_RESOURCES_PATH: ${process.env.ELECTRON_RESOURCES_PATH}`);
+    
+    // 检查关键路径是否存在
+    global.writeDebugLog('--- 关键路径存在性检查 ---');
+    const pathsToCheck = [
+      { name: 'process.execPath', path: process.execPath },
+      { name: 'process.resourcesPath', path: process.resourcesPath },
+      { name: '__dirname', path: __dirname },
+      { name: 'execPath目录', path: path.dirname(process.execPath) },
+      { name: 'execPath目录/userData', path: path.join(path.dirname(process.execPath), 'userData') },
+      { name: '__dirname/userData', path: path.join(__dirname, 'userData') }
+    ];
+    
+    pathsToCheck.forEach(item => {
+      if (item.path) {
+        global.writeDebugLog(`${item.name} (${item.path}) 存在: ${fs.existsSync(item.path)}`);
+      }
+    });
+    
+    // 详细检查 getUserDataPath 的计算过程
+    global.writeDebugLog('--- getUserDataPath 详细计算过程 ---');
+    let calculatedPath;
+    
+    if (isDev) {
+      calculatedPath = path.join(__dirname, 'userData');
+      global.writeDebugLog(`开发模式 - 计算路径: ${calculatedPath}`);
+    } else {
+      let programDir;
+      if (process.execPath.endsWith('.exe') && !process.execPath.includes('node.exe')) {
+        programDir = path.dirname(process.execPath);
+        global.writeDebugLog(`生产模式 - 检测到真实exe文件`);
+        global.writeDebugLog(`生产模式 - exe目录: ${programDir}`);
+      } else {
+        programDir = process.resourcesPath ? path.dirname(process.resourcesPath) : path.dirname(process.execPath);
+        global.writeDebugLog(`生产模式 - 未检测到真实exe，使用resourcesPath或execPath`);
+        global.writeDebugLog(`生产模式 - 程序目录: ${programDir}`);
+      }
+      calculatedPath = path.join(programDir, 'userData');
+      global.writeDebugLog(`生产模式 - 最终计算路径: ${calculatedPath}`);
+    }
+    
+    global.writeDebugLog(`getUserDataPath 最终结果: ${calculatedPath}`);
+    global.writeDebugLog(`计算路径是否存在: ${fs.existsSync(calculatedPath)}`);
+    
+    // 检查 movie-directory.txt 文件
+    const movieDirFile = path.join(calculatedPath, 'movie-directory.txt');
+    global.writeDebugLog('--- movie-directory.txt 详细检查 ---');
+    global.writeDebugLog(`movie-directory.txt 完整路径: ${movieDirFile}`);
+    global.writeDebugLog(`文件是否存在: ${fs.existsSync(movieDirFile)}`);
+    
+    if (fs.existsSync(movieDirFile)) {
+      try {
+        const content = fs.readFileSync(movieDirFile, 'utf-8');
+        global.writeDebugLog(`文件内容: "${content}"`);
+        global.writeDebugLog(`内容长度: ${content.length}`);
+        global.writeDebugLog(`去空格后内容: "${content.trim()}"`);
+        global.writeDebugLog(`内容是否为空: ${content.trim() === ''}`);
+        
+        // 检查配置的视频目录
+        const configuredDir = content.trim();
+        if (configuredDir) {
+          global.writeDebugLog(`--- 配置的视频目录检查 ---`);
+          global.writeDebugLog(`配置的目录路径: ${configuredDir}`);
+          global.writeDebugLog(`配置目录是否存在: ${fs.existsSync(configuredDir)}`);
+          
+          if (fs.existsSync(configuredDir)) {
+            try {
+              const files = fs.readdirSync(configuredDir);
+              global.writeDebugLog(`目录中总文件数: ${files.length}`);
+              
+              const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
+              const videoFiles = files.filter(f => {
+                const ext = path.extname(f).toLowerCase();
+                return videoExtensions.includes(ext);
+              });
+              global.writeDebugLog(`视频文件数量: ${videoFiles.length}`);
+              
+              if (videoFiles.length > 0) {
+                global.writeDebugLog(`前5个视频文件:`);
+                videoFiles.slice(0, 5).forEach((file, index) => {
+                  const fullPath = path.join(configuredDir, file);
+                  const stats = fs.statSync(fullPath);
+                  const sizeGB = (stats.size / (1024 * 1024 * 1024)).toFixed(2);
+                  global.writeDebugLog(`  ${index + 1}. ${file} (${sizeGB}GB)`);
+                });
+              }
+              
+              // 检查大文件（>100MB）
+              const largeFiles = files.filter(f => {
+                try {
+                  const fullPath = path.join(configuredDir, f);
+                  const stats = fs.statSync(fullPath);
+                  const ext = path.extname(f).toLowerCase();
+                  return videoExtensions.includes(ext) && stats.size > 100 * 1024 * 1024;
+                } catch {
+                  return false;
+                }
+              });
+              global.writeDebugLog(`大于100MB的视频文件数量: ${largeFiles.length}`);
+              
+            } catch (readError) {
+              global.writeDebugLog(`读取配置目录失败: ${readError.message}`);
+            }
+          }
+        }
+      } catch (readError) {
+        global.writeDebugLog(`读取movie-directory.txt失败: ${readError.message}`);
+      }
+    } else {
+      global.writeDebugLog(`movie-directory.txt 文件不存在！`);
+      // 检查父目录是否存在
+      const parentDir = path.dirname(movieDirFile);
+      global.writeDebugLog(`父目录 ${parentDir} 是否存在: ${fs.existsSync(parentDir)}`);
+    }
+    
+    global.writeDebugLog('========== 详细路径调试结束 ==========');
+  } catch (debugError) {
+    global.writeDebugLog(`路径调试过程出错: ${debugError.message}`);
+  }
+  
   ensureUserDataDir();
   
   // 设置环境变量，让Next.js服务端知道正确的用户数据路径
