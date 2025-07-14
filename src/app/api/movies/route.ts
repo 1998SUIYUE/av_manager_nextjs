@@ -66,6 +66,40 @@ function parseMovieFilename(filename: string): {
 /**
  * 使用 axios 和 cheerio 获取元数据，替代 Playwright
  */
+// 随机User-Agent池
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+];
+
+// 获取随机User-Agent
+function getRandomUserAgent(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+// 生成真实浏览器请求头
+function getBrowserHeaders(): Record<string, string> {
+  return {
+    "User-Agent": getRandomUserAgent(),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Cache-Control": "max-age=0"
+  };
+}
+
+
+
 async function fetchCoverUrl(code: string, baseUrl: string) {
   // 按照用户逻辑：直接进行网络请求，不在这里检查缓存
   // 缓存检查已经在processMovieFiles中完成
@@ -75,11 +109,16 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     // 2. 发送 HTTP 请求获取搜索结果页面
     const searchUrl = `https://javdb.com/search?q=${code}&f=all`;
     const searchResponse = await axios.get(searchUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      },
-      timeout: 1000, // 减少超时时间从8秒到1秒
+      headers: getBrowserHeaders(),
+      timeout: 1000, // 增加超时时间到5秒
     });
+
+    // 检查是否被屏蔽
+    if (searchResponse.status === 403) {
+      throw new Error(`BLOCKED_403: 搜索请求被屏蔽 ${code}`);
+    }
+
+
 
     const $search = cheerio.load(searchResponse.data);
     const moviePageLink = $search("div.movie-list > div.item > a").first().attr("href");
@@ -94,10 +133,18 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     // 3. 请求电影详情页
     const pageResponse = await axios.get(moviePageUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        ...getBrowserHeaders(),
+        "Referer": searchUrl, // 添加来源页面，更真实
       },
-      timeout: 1000, // 减少超时时间从8秒到1秒
+      timeout: 1000, // 增加超时时间到5秒
     });
+
+    // 检查是否被屏蔽
+    if (pageResponse.status === 403) {
+      throw new Error(`BLOCKED_403: 详情页请求被屏蔽 ${code}`);
+    }
+
+
     const $page = cheerio.load(pageResponse.data);
 
     // 4. 解析页面内容
@@ -207,14 +254,14 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 8; // 设置为8，以降低被屏蔽风险
+  const concurrencyLimit = 10; // 降低并发数到3，减少被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
   
   // 启动内存监控
   const memoryCheckInterval = setInterval(checkMemoryUsage, 5000);
   
   // 批处理大小
-  const batchSize = 5;
+  const batchSize = 10;
 
   // 分批处理电影文件，避免一次性处理过多导致内存溢出
   const processedMovies: MovieFile[] = [];
@@ -346,7 +393,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
               return {
                 ...movie,
                 coverUrl,
-                displayTitle: title || movie.title,
+                displayTitle: title || movie.title || movie.filename,
                 actress,
                 // 添加评分数据
                 ...(eloData && {
@@ -374,12 +421,6 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
           processedMovies.push(batch[index]); // 添加原始数据作为后备
         }
       });
-      
-      // 批次间延迟，给系统喘息时间
-      if (i + batchSize < needsFetchMovies.length) {
-        devWithTimestamp(`[processMovieFiles] 批次处理完成，延迟0秒...`);
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
     }
   } finally {
     // 清理内存监控
@@ -519,9 +560,16 @@ async function retryWithTimeout<T>(
       // 如果是网络错误或超时，快速失败
      
 
+      // 检查是否是403错误，如果是则立即停止
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('BLOCKED_403')) {
+        devWithTimestamp(`检测到403屏蔽，立即停止重试: ${errorMessage}`);
+        break; // 立即停止，不再重试
+      }
+
       // 短暂延迟后重试
       if (attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // 增加重试延迟
       }
     }
   }
@@ -725,13 +773,7 @@ async function storeDirectory(directory: string): Promise<void> {
 export async function GET(request: Request) {
   devWithTimestamp(`[GET] 接收到 GET 请求`);
   try {
-    
-    
-    
     const baseUrl = new URL(request.url).origin; // 获取请求的协议和域名
-    
-    
-
     // 获取存储的电影目录
     devWithTimestamp(`[GET] 开始获取存储的电影目录`);
     const movieDirectory = await getStoredDirectory();
