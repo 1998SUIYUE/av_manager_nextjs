@@ -189,26 +189,8 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
     return { coverUrl, title, actress };
 
-  } catch (error) {
-    devWithTimestamp(`[fetchCoverUrl] 获取 ${code} 信息时发生错误:`, error);
-    
-    // 错误处理和备用封面逻辑
-    const backupCoverUrl = `https://fourhoi.com/${code.toLocaleLowerCase()}/cover-n.jpg`;
-    devWithTimestamp(`[fetchCoverUrl] 尝试使用备用封面URL: ${backupCoverUrl}`);
-    
-    try {
-      const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(backupCoverUrl)}`;
-      const imageProxyResponse = await fetch(proxyApiUrl);
-      if (imageProxyResponse.ok) {
-        const proxyData = await imageProxyResponse.json();
-        const localCoverUrl = proxyData.imageUrl;
-        devWithTimestamp(`[fetchCoverUrl] 备用封面已缓存到本地: ${localCoverUrl}`);
-        await updateMovieMetadataCache(code, localCoverUrl, null, null);
-        return { coverUrl: localCoverUrl, title: null, actress: null };
-      }
-    } catch (proxyError) {
-      devWithTimestamp(`[fetchCoverUrl] 缓存备用封面失败:`, proxyError);
-    }
+  } catch{
+
     
     return { coverUrl: null, title: null, actress: null };
   }
