@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import * as cheerio from "cheerio";
+
 import {
   getCachedMovieMetadata,
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
 import { writeFile, readFile } from "fs/promises";
-import { devWithTimestamp } from "@/utils/logger";
+import { devWithTimestamp }  from "@/utils/logger";
 
 // 支持的视频文件扩展名列表
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
@@ -63,87 +62,58 @@ function parseMovieFilename(filename: string): {
   };
 }
 
+import { chromium } from 'playwright';
+
 /**
- * 使用 axios 和 cheerio 获取元数据，替代 Playwright
+ * 使用 Playwright 抓取电影封面和元数据。
+ * @param code - 用于搜索的电影代码或关键字。
+ * @returns 返回包含电影标题、演员和封面URL的对象。
  */
-// 随机User-Agent池
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-];
-
-// 获取随机User-Agent
-function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-// 生成真实浏览器请求头
-function getBrowserHeaders(): Record<string, string> {
-  return {
-    "User-Agent": getRandomUserAgent(),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Cache-Control": "max-age=0"
-  };
-}
-
-
-
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  // 按照用户逻辑：直接进行网络请求，不在这里检查缓存
-  // 缓存检查已经在processMovieFiles中完成
-  devWithTimestamp(`[fetchCoverUrl] 开始网络请求获取 ${code} 的元数据`);
-
+  let browser;
+  devWithTimestamp(`[fetchCoverUrl] 开始处理番号: ${code}`);
   try {
-    // 2. 发送 HTTP 请求获取搜索结果页面
+    devWithTimestamp(`[fetchCoverUrl] 启动 Playwright...`);
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    await context.addInitScript("localStorage.setItem('uiLanguage-1.0.0', 'zh');");
+    const page = await context.newPage();
+    devWithTimestamp(`[fetchCoverUrl] Playwright 启动成功`);
+
     const searchUrl = `https://manko.fun/searchresult?by=Title&keyword=${code}`;
-    const searchResponse = await axios.get(searchUrl, {
-      headers: getBrowserHeaders(),
-      timeout: 1000, // 增加超时时间到5秒
-    });
+    devWithTimestamp(`[fetchCoverUrl] 导航到搜索页面: ${searchUrl}`);
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+    devWithTimestamp(`[fetchCoverUrl] 页面加载完成`);
 
-    // 检查是否被屏蔽
-    if (searchResponse.status === 403) {
-      throw new Error(`BLOCKED_403: 搜索请求被屏蔽 ${code}`);
-    }
-    const $search = cheerio.load(searchResponse.data);
-    const moviePageLink = $search("#app > div.min-h-screen.bg-gray-dark.text-white > main > div > div.grid.grid-cols-1.sm\:grid-cols-2.md\:grid-cols-3.lg\:grid-cols-4.xl\:grid-cols-6.gap-4 > div:nth-child(1) > div.relative.cursor-pointer.rounded-t-lg.overflow-hidden").attr("data-id");
+    const firstResultSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > main > div > div> div:nth-child(1)'; 
+    devWithTimestamp(`[fetchCoverUrl] 等待第一个搜索结果出现...`);
+    await page.waitForSelector(firstResultSelector, { timeout: 10000 });
+    devWithTimestamp(`[fetchCoverUrl] 第一个搜索结果已找到，正在点击...`);
+    await page.click(firstResultSelector);
 
-    if (!moviePageLink) {
-      throw new Error(`在搜索结果中未找到番号 ${code} 的链接`);
-    }
 
-    const moviePageUrl = `https://manko.fun/movie-info/${moviePageLink}`;
-    devWithTimestamp(`[fetchCoverUrl] 找到详情页链接: ${moviePageUrl}`);
-    // 3. 请求电影详情页
-    const pageResponse = await axios.get(moviePageUrl, {
-      headers: {
-        ...getBrowserHeaders(),
-        "Referer": searchUrl, // 添加来源页面，更真实
-      },
-      timeout: 1000, // 增加超时时间到5秒
-    });
 
-    // 检查是否被屏蔽
-    if (pageResponse.status === 403) {
-      throw new Error(`BLOCKED_403: 详情页请求被屏蔽 ${code}`);
-    }
-    const $page = cheerio.load(pageResponse.data);
-    // 4. 解析页面内容
-    let coverUrl = $page("#app > div.min-h-screen.bg-gray-dark.text-white > div > div.grid.grid-cols-1.lg\:grid-cols-2.gap-6.mb-8 > div.bg-gray-800.rounded-lg.p-4.flex.justify-center > img").attr("src") || null;
-    const title = $page("#app > div.min-h-screen.bg-gray-dark.text-white > div > div.mb-6 > div > h1").text().trim() || null;
-    const actress = $page('#app > div.min-h-screen.bg-gray-dark.text-white > div > div.grid.grid-cols-1.lg\:grid-cols-2.gap-6.mb-8 > div.bg-gray-800.rounded-lg.p-6.space-y-4 > div.space-y-3.text-lg > div:nth-child(6) > span > button').text().trim() || "unknow";
+    const coverImageSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > div > div > div.bg-gray-800.rounded-lg.p-4.flex.justify-center > img';
+    devWithTimestamp(`[fetchCoverUrl] 等待封面图片出现...`);
+    await page.waitForSelector(coverImageSelector, { timeout: 10000 });
+    let coverUrl = await page.getAttribute(coverImageSelector, 'src');
+    devWithTimestamp(`[fetchCoverUrl] 封面图片URL: ${coverUrl}`);
+
+    const titleSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > div > div.mb-6 > div > h1';
+    devWithTimestamp(`[fetchCoverUrl] 提取标题...`);
+    const title = await page.textContent(titleSelector);
+    devWithTimestamp(`[fetchCoverUrl] 标题: ${title}`);
+
+    // 新的、更健壮的演员提取逻辑 (使用 XPath 并处理多个演员)
+    // const actorXPath = "//strong[contains(text(), '表演者:')]/following-sibling::span/button";
+    // devWithTimestamp(`[fetchCoverUrl] 使用 XPath 提取演员: ${actorXPath}`);
+    // const actorElements = page.locator(`xpath=${actorXPath}`);
+    // const allActors = await actorElements.allTextContents();
+    // const actors = allActors.join(', '); // 将所有演员用逗号连接
+    // devWithTimestamp(`[fetchCoverUrl] 演员: ${actors}`);
+    
+    const actress = "";
+
 
     // 5. 处理封面图片代理
     if (coverUrl) {
@@ -159,10 +129,10 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
             devWithTimestamp(`[fetchCoverUrl] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`);
           } else {
             devWithTimestamp(`[fetchCoverUrl] image-proxy 返回占位符图片，保持原始URL: ${coverUrl}`);
-            // 保持原始coverUrl，不使用占位符
+            coverUrl = null;
           }
         } else {
-           devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
+          devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
         }
       } catch (proxyError) {
         devWithTimestamp(`[fetchCoverUrl] 调用 image-proxy 发生错误: ${proxyError}`);
@@ -182,8 +152,19 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
 
     return { coverUrl, title, actress };
 
-  } catch{
-    return { coverUrl: null, title: null, actress: null };
+  } catch (error) {
+    console.error(`抓取过程中发生错误 (code: ${code}):`, error);
+    // 如果发生错误，返回 null 或可以抛出错误
+    return {
+      title: null,
+      actress: null,
+      coverUrl: null,
+    };
+  } finally {
+    // 确保浏览器在最后总是被关闭
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
@@ -227,14 +208,14 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 10; // 降低并发数到3，减少被屏蔽风险
+  const concurrencyLimit = 12; // 降低并发数到3，减少被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
   
   // 启动内存监控
   const memoryCheckInterval = setInterval(checkMemoryUsage, 5000);
   
   // 批处理大小
-  const batchSize = 10;
+  const batchSize = 50;
 
   // 分批处理电影文件，避免一次性处理过多导致内存溢出
   const processedMovies: MovieFile[] = [];
@@ -278,7 +259,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
         } else {
           // 缓存不存在或信息不完整，需要网络请求
           needsFetchMovies.push(movie);
-          devWithTimestamp(`[processMovieFiles] 🔄 ${movie.code} 缓存不完整，需要网络请求`);
+          // devWithTimestamp(`[processMovieFiles] 🔄 ${movie.code} 缓存不完整，需要网络请求`);
         }
       } catch {
         needsFetchMovies.push(movie);
@@ -333,7 +314,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                   const result = await retryWithTimeout(
                     () => fetchCoverUrl(movie.code!, baseUrl), // 直接网络请求
                     1, // 减少重试次数从2次到1次
-                    1000 // 减少超时时间从5秒到1秒
+                    10000 // 减少超时时间从5秒到1秒
                   );
                   coverUrl = result.coverUrl;
                   title = result.title;
@@ -629,7 +610,7 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
               VIDEO_EXTENSIONS.includes(ext) &&
               stats.size >= FILE_SIZE_THRESHOLD
             ) {
-              devWithTimestamp(`[scanDirectory] 发现符合条件的视频文件: ${file} (大小: ${(stats.size / (1024 * 1024 * 1024)).toFixed(2)}GB)`);
+              // devWithTimestamp(`[scanDirectory] 发现符合条件的视频文件: ${file} (大小: ${(stats.size / (1024 * 1024 * 1024)).toFixed(2)}GB)`);
               // 解析电影文件名以提取元数据
               const parsedInfo = parseMovieFilename(file);
               // 构建 MovieFile 对象
@@ -653,11 +634,11 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
               // );
 
               movieFiles.push(movieFile); // 将电影文件添加到列表中
-              devWithTimestamp(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
+              // devWithTimestamp(`[scanDirectory] 添加电影文件到列表: ${movieFile.filename}`);
             } else {
               // 记录跳过的文件及原因
               if (!VIDEO_EXTENSIONS.includes(ext)) {
-                devWithTimestamp(`[scanDirectory] 跳过文件 (不支持的格式): ${file} (扩展名: ${ext})`);
+                // devWithTimestamp(`[scanDirectory] 跳过文件 (不支持的格式): ${file} (扩展名: ${ext})`);
               } else if (stats.size < FILE_SIZE_THRESHOLD) {
                 devWithTimestamp(`[scanDirectory] 跳过文件 (文件太小): ${file} (大小: ${(stats.size / (1024 * 1024 * 1024)).toFixed(2)}GB, 阈值: ${(FILE_SIZE_THRESHOLD / (1024 * 1024 * 1024)).toFixed(2)}GB)`);
               }

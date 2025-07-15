@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import axios from 'axios';
-import { devWithTimestamp,prodWithTimestamp } from '@/utils/logger';
+import { devWithTimestamp } from '@/utils/logger';
 import { getImageCachePath } from '@/utils/paths';
 
 // 图片缓存目录
@@ -52,27 +52,27 @@ export async function GET(request: NextRequest) {
     const imageUrl = searchParams.get('url');
     
     if (!imageUrl) {
-      prodWithTimestamp('[image-proxy/GET] 缺少图片URL参数，返回 400');
+      devWithTimestamp('[image-proxy/GET] 缺少图片URL参数，返回 400');
       return new NextResponse('缺少图片URL参数', { status: 400 });
     }
-    prodWithTimestamp(`[image-proxy/GET] 请求的图片URL: ${imageUrl}`);
+    devWithTimestamp(`[image-proxy/GET] 请求的图片URL: ${imageUrl}`);
     
     // 缓存文件路径
     const cacheFileName = getCacheFileName(imageUrl);
     const cachePath = path.join(CACHE_DIR, cacheFileName);
     const apiPath = `/api/image-serve/${cacheFileName}`;
-    prodWithTimestamp(`[image-proxy/GET] 缓存文件路径: ${cachePath}, API路径: ${apiPath}`);
+    devWithTimestamp(`[image-proxy/GET] 缓存文件路径: ${cachePath}, API路径: ${apiPath}`);
     
     // 检查缓存是否存在
     try {
-      prodWithTimestamp(`[image-proxy/GET] 尝试从缓存读取: ${cachePath}`);
+      devWithTimestamp(`[image-proxy/GET] 尝试从缓存读取: ${cachePath}`);
       await fs.access(cachePath);
       // 缓存存在，返回API路径
-      prodWithTimestamp(`[image-proxy/GET] 缓存命中，返回API路径: ${apiPath}`);
+      devWithTimestamp(`[image-proxy/GET] 缓存命中，返回API路径: ${apiPath}`);
       return NextResponse.json({ imageUrl: apiPath });
     } catch (cacheError) {
       // 缓存不存在，下载图片
-      prodWithTimestamp(`[image-proxy/GET] 缓存未命中或读取失败: ${cacheError}. 开始下载图片: ${imageUrl}`);
+      devWithTimestamp(`[image-proxy/GET] 缓存未命中或读取失败: ${cacheError}. 开始下载图片: ${imageUrl}`);
       try {
         const response = await axios.get(imageUrl, {
           responseType: 'arraybuffer',
@@ -83,23 +83,23 @@ export async function GET(request: NextRequest) {
         });
         
         const imageBuffer = Buffer.from(response.data);
-        prodWithTimestamp(`[image-proxy/GET] 图片下载成功，大小: ${imageBuffer.length} 字节`);
+        devWithTimestamp(`[image-proxy/GET] 图片下载成功，大小: ${imageBuffer.length} 字节`);
         
         // 保存到缓存
         try {
           await fs.writeFile(cachePath, imageBuffer);
-          prodWithTimestamp(`[image-proxy/GET] 图片成功保存到缓存: ${cachePath}`);
+          devWithTimestamp(`[image-proxy/GET] 图片成功保存到缓存: ${cachePath}`);
         } catch (writeError) {
-          prodWithTimestamp(`[image-proxy/GET] 保存图片到缓存失败: ${writeError}`);
+          devWithTimestamp(`[image-proxy/GET] 保存图片到缓存失败: ${writeError}`);
         }
         
         // 返回缓存图片URL
-        prodWithTimestamp(`[image-proxy/GET] 返回API路径: ${apiPath}`);
+        devWithTimestamp(`[image-proxy/GET] 返回API路径: ${apiPath}`);
         return NextResponse.json({ imageUrl: apiPath });
       } catch (fetchError: unknown) {
-        prodWithTimestamp('[image-proxy/GET] 下载图片失败:', fetchError);
+        devWithTimestamp('[image-proxy/GET] 下载图片失败:', fetchError);
         // 下载失败时返回占位符图片路径
-        prodWithTimestamp(`[image-proxy/GET] 下载失败，返回占位符图片路径`);
+        devWithTimestamp(`[image-proxy/GET] 下载失败，返回占位符图片路径`);
         return NextResponse.json({ imageUrl: null });
       }
     }

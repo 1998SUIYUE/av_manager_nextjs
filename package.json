@@ -21,6 +21,7 @@
     "cross-env": "^7.0.3",
     "electron-is-dev": "^2.0.0",
     "next": "15.0.3",
+    "playwright": "^1.54.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "styled-jsx": "^5.1.1"
@@ -74,17 +75,23 @@
       {
         "from": ".next/standalone",
         "to": "standalone",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": ".next/static",
         "to": "standalone/.next/static",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "public",
         "to": "standalone/public",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [

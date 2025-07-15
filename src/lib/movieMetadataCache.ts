@@ -155,7 +155,7 @@ export async function getCachedMovieMetadata(code: string, baseUrl: string): Pro
 
   // 如果找到缓存条目，并且其 coverUrl 仍然是外部链接，则尝试本地化
   if (found && found.coverUrl && (found.coverUrl.startsWith('http://') || found.coverUrl.startsWith('https://'))) {
-    devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 发现外部封面URL，尝试本地化: ${found.coverUrl}`);
+    // devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 发现外部封面URL，尝试本地化: ${found.coverUrl}`);
     try {
       // 使用 baseUrl 构建完整的 image-proxy URL
       const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(found.coverUrl)}`;
@@ -169,7 +169,7 @@ export async function getCachedMovieMetadata(code: string, baseUrl: string): Pro
         // 更新找到的缓存条目，并写入磁盘
         found.coverUrl = localCoverUrl; 
         await updateMovieMetadataCache(found.code, found.coverUrl, found.title, found.actress); // 持久化更新
-        devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 的封面URL已更新并持久化到本地`);
+        // devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 的封面URL已更新并持久化到本地`);
       } else {
         devWithTimestamp(`[getCachedMovieMetadata] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
         // 如果代理失败，可以考虑使用默认图片或者保留原始URL，但不再尝试本地化
@@ -184,7 +184,7 @@ export async function getCachedMovieMetadata(code: string, baseUrl: string): Pro
     // devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 在缓存中找到`);
     return found;
   }
-  devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
+  // devWithTimestamp(`[getCachedMovieMetadata] 番号 ${code} 未在缓存中找到`);
   return null;
 }
 
@@ -392,7 +392,7 @@ async function readCache(): Promise<MovieMetadata[]> {
   
   // 在读取前先刷新写入队列，确保所有待写入的数据都已持久化
   if (_writeQueue.length > 0) {
-    devWithTimestamp(`[readCache] 检测到写入队列中有 ${_writeQueue.length} 个待写入操作，先刷新队列`);
+    // devWithTimestamp(`[readCache] 检测到写入队列中有 ${_writeQueue.length} 个待写入操作，先刷新队列`);
     await flushWriteQueue();
   }
   
@@ -436,7 +436,7 @@ async function readCacheUnsafe(): Promise<MovieMetadata[]> {
     // 捕获文件操作中可能发生的错误
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
       // 如果文件不存在，返回空数组
-      devWithTimestamp('[readCache] 缓存文件不存在');
+      // devWithTimestamp('[readCache] 缓存文件不存在');
       return [];
     } else {
       // 处理其他读取错误

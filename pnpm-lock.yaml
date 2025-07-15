@@ -14,12 +14,18 @@ importers:
       cheerio:
         specifier: ^1.0.0
         version: 1.0.0
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
+      electron-is-dev:
+        specifier: ^2.0.0
+        version: 2.0.0
       next:
         specifier: 15.0.3
         version: 15.0.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       playwright:
-        specifier: ^1.49.0
-        version: 1.49.0
+        specifier: ^1.54.1
+        version: 1.54.1
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -39,27 +45,18 @@ importers:
       '@types/react-dom':
         specifier: ^18
         version: 18.3.1
-      cross-env:
-        specifier: ^7.0.3
-        version: 7.0.3
       electron:
         specifier: ^33.2.1
         version: 33.2.1
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
-      electron-is-dev:
-        specifier: ^2.0.0
-        version: 2.0.0
       eslint:
         specifier: ^8
         version: 8.57.1
       eslint-config-next:
         specifier: 15.0.3
         version: 15.0.3(eslint@8.57.1)(typescript@5.7.2)
-      find-free-port:
-        specifier: ^2.0.0
-        version: 2.0.0
       postcss:
         specifier: ^8
         version: 8.4.49
@@ -1275,9 +1272,6 @@ packages:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
 
-  find-free-port@2.0.0:
-    resolution: {integrity: sha512-J1j8gfEVf5FN4PR5w5wrZZ7NYs2IvqsHcd03cAeQx3Ec/mo+lKceaVNhpsRKoZpZKbId88o8qh+dwUwzBV6WCg==}
-
   find-up@5.0.0:
     resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
     engines: {node: '>=10'}
@@ -2117,13 +2111,13 @@ packages:
     resolution: {integrity: sha512-saLsH7WeYYPiD25LDuLRRY/i+6HaPYr6G1OUlN39otzkSTxKnubR9RTxS3/Kk50s1g2JTgFwWQDQyplC5/SHZg==}
     engines: {node: '>= 6'}
 
-  playwright-core@1.49.0:
-    resolution: {integrity: sha512-R+3KKTQF3npy5GTiKH/T+kdhoJfJojjHESR1YEWhYuEKRVfVaxH3+4+GvXE5xyCngCxhxnykk0Vlah9v8fs3jA==}
+  playwright-core@1.54.1:
+    resolution: {integrity: sha512-Nbjs2zjj0htNhzgiy5wu+3w09YetDx5pkrpI/kZotDlDUaYk0HVA5xrBVPdow4SAUIlhgKcJeJg4GRKW6xHusA==}
     engines: {node: '>=18'}
     hasBin: true
 
-  playwright@1.49.0:
-    resolution: {integrity: sha512-eKpmys0UFDnfNb3vfsf8Vx2LEOtflgRebl0Im2eQQnYMA4Aqd+Zw8bEOB+7ZKvN76901mRnqdsiOGKxzVTbi7A==}
+  playwright@1.54.1:
+    resolution: {integrity: sha512-peWpSwIBmSLi6aW2auvrUtf2DqY16YYcCMO8rTVx486jKmDTJg7UAhyrraP98GB8BoPURZP8+nxO7TSd4cPr5g==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4297,8 +4291,6 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  find-free-port@2.0.0: {}
-
   find-up@5.0.0:
     dependencies:
       locate-path: 6.0.0
@@ -5175,11 +5167,11 @@ snapshots:
 
   pirates@4.0.6: {}
 
-  playwright-core@1.49.0: {}
+  playwright-core@1.54.1: {}
 
-  playwright@1.49.0:
+  playwright@1.54.1:
     dependencies:
-      playwright-core: 1.49.0
+      playwright-core: 1.54.1
     optionalDependencies:
       fsevents: 2.3.2
 

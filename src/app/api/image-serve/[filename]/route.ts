@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { getImageCachePath } from '@/utils/paths';
+import { devWithTimestamp } from "@/utils/logger";
 
 // 图片缓存目录
 const CACHE_DIR = getImageCachePath();
@@ -31,7 +32,7 @@ export async function GET(
 ) {
   try {
     const { filename } = await params;
-    // devWithTimestamp(`[image-serve] 请求图片: ${filename}`);
+    devWithTimestamp(`[image-serve] 请求图片: ${filename}`);
     
     // 构建文件路径
     const filePath = path.join(CACHE_DIR, filename);
@@ -40,7 +41,7 @@ export async function GET(
     try {
       await fs.access(filePath);
     } catch {
-      // devWithTimestamp(`[image-serve] 文件不存在: ${filePath}`);
+      devWithTimestamp(`[image-serve] 文件不存在: ${filePath}`);
       return new NextResponse('图片不存在', { status: 404 });
     }
     
@@ -48,7 +49,7 @@ export async function GET(
     const imageBuffer = await fs.readFile(filePath);
     const extension = path.extname(filename);
     
-    // devWithTimestamp(`[image-serve] 成功读取图片: ${filename}, 大小: ${imageBuffer.length} 字节`);
+    devWithTimestamp(`[image-serve] 成功读取图片: ${filename}, 大小: ${imageBuffer.length} 字节`);
     
     // 返回图片内容
     const headers = new Headers({

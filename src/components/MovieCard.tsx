@@ -37,7 +37,7 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, formatFileSize, onMovieCli
       <div className="relative overflow-hidden bg-gray-700 min-h-[200px] flex items-center justify-center">
         <img
           src={movie.coverUrl || "/placeholder-image.svg"}
-          alt={movie.displayTitle || movie.title || movie.filename}
+          alt={movie.filename ||movie.displayTitle || movie.title }
           className="w-full h-auto object-contain max-h-[400px]"
           onError={(e) => {
             console.error('图片加载失败:', {
