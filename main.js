@@ -461,147 +461,120 @@ async function startNextServer() {
       console.log(`[startNextServer] - node_modules 存在: ${fs.existsSync(nodeModulesPath)}`);
       console.log(`[startNextServer] - package.json 存在: ${fs.existsSync(packageJsonPath)}`);
       
-      console.log('[startNextServer] 🚀 启动 Next.js 服务器进程...');
-      nextServer = spawn('node', [serverScriptPath], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,  // 使用完整的系统环境变量
-          ...serverEnv,
-          NODE_ENV: 'production',
-          HOSTNAME: '127.0.0.1',
-          PORT: localServerPort.toString(),
-          // 静态资源路径
-          NEXT_STATIC_PATH: path.join(process.resourcesPath, 'static'),
-          NEXT_PUBLIC_PATH: path.join(process.resourcesPath, 'public'),
-          // 修复 Next.js 路径问题
-          NEXT_RUNTIME: 'nodejs',
-          __NEXT_PRIVATE_STANDALONE_CONFIG: JSON.stringify({
-            distDir: './.next',
+      console.log('[startNextServer] 🚀 方案2：主进程集成 Next.js');
+      
+      // 方案2：在主进程中直接运行 Next.js，不使用子进程
+      try {
+        console.log('[startNextServer] 📦 尝试加载 Next.js 模块...');
+        
+        // 检查可能的 Next.js 路径
+        const possibleNextPaths = [
+          // 标准 node_modules 路径
+          path.join(__dirname, 'node_modules', 'next'),
+          // standalone 目录中的 Next.js
+          path.join(standaloneDir, 'node_modules', 'next'),
+          // app 目录中的 Next.js
+          path.join(process.resourcesPath, 'app', 'node_modules', 'next'),
+          // 相对路径
+          'next'
+        ];
+        
+        let nextModule = null;
+        let nextPath = null;
+        
+        for (const testPath of possibleNextPaths) {
+          try {
+            console.log(`[startNextServer] 🔍 尝试加载 Next.js: ${testPath}`);
+            nextModule = require(testPath);
+            nextPath = testPath;
+            console.log(`[startNextServer] ✅ 成功加载 Next.js: ${testPath}`);
+            break;
+          } catch (error) {
+            console.log(`[startNextServer] ❌ 无法加载 Next.js: ${testPath} - ${error.message}`);
+          }
+        }
+        
+        if (!nextModule) {
+          console.error('[startNextServer] ❌ 无法找到 Next.js 模块，启动备用服务器');
+          await startFallbackServer(localServerPort, userDataPath);
+          console.log('[startNextServer] ✅ 备用服务器已启动，应用可用');
+          return;
+        }
+        
+        console.log('[startNextServer] 🎯 使用主进程集成方式启动 Next.js');
+        
+        // 使用 standalone 目录作为应用目录
+        const appDir = standaloneDir;
+        console.log(`[startNextServer] 📁 使用应用目录: ${appDir}`);
+        
+        // 创建 Next.js 应用实例
+        const app = nextModule({
+          dev: false,
+          dir: appDir,
+          quiet: false,
+          conf: {
+            // 基本配置
+            images: { unoptimized: true },
+            output: 'standalone',
+            assetPrefix: '',
+            basePath: '',
+            // 环境变量
             env: {
               IS_ELECTRON: 'true',
               USER_DATA_PATH: userDataPath,
               APP_CACHE_PATH: userDataPath
             }
-          })
-        },
-        // 设置工作目录为包含 server.js 的目录
-        cwd: standaloneDir,
-        shell: false,  // 不使用shell，直接启动node进程
-        detached: false  // 确保子进程与父进程关联
-      });
-
-      const serverPID = nextServer.pid;
-      console.log('[startNextServer] ✅ Next.js 进程已启动，PID:', serverPID);
-      
-      // 保存PID到全局变量和文件
-      global.nextServerPID = serverPID;
-      
-      // 将PID写入文件，以便后续查找
-      const pidFilePath = path.join(getUserDataPath(), 'server.pid');
-      try {
-        fs.writeFileSync(pidFilePath, serverPID.toString());
-        console.log('[startNextServer] 📝 PID已保存到文件:', pidFilePath);
-      } catch (error) {
-        console.log('[startNextServer] ⚠️ PID文件写入失败:', error.message);
-      }
-
-      // 监听输出 - 添加更详细的日志
-      nextServer.stdout.on('data', (data) => {
-        const output = data.toString().trim();
-        console.log('[next-server-stdout]', output);
-        
-        // 检查是否有启动成功的标志
-        if (output.includes('Ready') || output.includes('started') || output.includes('listening')) {
-          console.log('[startNextServer] 🎉 检测到 Next.js 服务器启动成功信号');
-        }
-      });
-      
-      nextServer.stderr.on('data', (data) => {
-        const error = data.toString().trim();
-        console.error('[next-server-stderr]', error);
-        
-        // 检查常见错误并提供解决方案
-        if (error.includes('ENOENT')) {
-          console.error('[startNextServer] ❌ Node.js 未找到，请确保系统已安装 Node.js');
-        } else if (error.includes('MODULE_NOT_FOUND')) {
-          console.error('[startNextServer] ❌ 缺少依赖模块:', error);
-          console.error('[startNextServer] 💡 建议：重新构建应用或检查 node_modules');
-        } else if (error.includes('Cannot find module')) {
-          console.error('[startNextServer] ❌ 找不到模块:', error);
-        } else if (error.includes('Error: listen EADDRINUSE')) {
-          console.error('[startNextServer] ❌ 端口被占用:', error);
-        } else if (error.includes('SyntaxError')) {
-          console.error('[startNextServer] ❌ 语法错误:', error);
-        } else {
-          console.error('[startNextServer] ❌ 未知错误:', error);
-        }
-      });
-      
-      nextServer.on('error', (error) => {
-        console.error('[next-server-error] 进程错误:', error);
-      });
-      
-      nextServer.on('exit', (code, signal) => {
-        console.log(`[next-server-exit] 进程退出，代码: ${code}, 信号: ${signal}`);
-        
-        // 如果 Next.js 服务器退出，分析原因并启动备用服务器
-        if (code !== null) {
-          console.log(`[startNextServer] 🔄 Next.js 服务器退出 (代码: ${code})，分析原因...`);
-          
-          if (code === 1) {
-            console.log(`[startNextServer] ❌ Next.js 启动失败，可能原因：依赖缺失或配置错误`);
-          } else if (code === 0) {
-            console.log(`[startNextServer] ⚠️ Next.js 正常退出，可能原因：配置问题或环境不兼容`);
           }
+        });
+        
+        console.log('[startNextServer] 🔄 准备 Next.js 应用...');
+        await app.prepare();
+        console.log('[startNextServer] ✅ Next.js 应用准备完成');
+        
+        // 创建 HTTP 服务器
+        const server = http.createServer((req, res) => {
+          // 使用 Next.js 处理请求
+          app.getRequestHandler()(req, res);
+        });
+        
+        // 启动服务器
+        console.log(`[startNextServer] 🚀 启动 HTTP 服务器在端口 ${localServerPort}...`);
+        server.listen(localServerPort, '127.0.0.1', () => {
+          console.log(`[startNextServer] ✅ Next.js 服务器成功启动在 http://127.0.0.1:${localServerPort}`);
+        });
+        
+        // 保存服务器引用
+        global.nextServerInstance = server;
+        global.nextAppInstance = app;
+        
+        // 错误处理
+        server.on('error', (error) => {
+          console.error('[startNextServer] ❌ 服务器错误:', error);
           
+          // 启动备用服务器
           setTimeout(async () => {
             try {
               await startFallbackServer(localServerPort, userDataPath);
-              console.log(`[startNextServer] ✅ 备用服务器已启动`);
+              console.log('[startNextServer] ✅ 备用服务器已启动');
             } catch (fallbackError) {
-              console.error(`[startNextServer] ❌ 备用服务器启动失败:`, fallbackError);
+              console.error('[startNextServer] ❌ 备用服务器启动失败:', fallbackError);
             }
           }, 1000);
-        }
-      });
-      
-      // 检查并修复静态资源路径
-      const staticSourceDir = path.join(process.resourcesPath, 'static');
-      const publicSourceDir = path.join(process.resourcesPath, 'public');
-      const staticTargetDir = path.join(standaloneDir, '.next', 'static');
-      const publicTargetDir = path.join(standaloneDir, 'public');
-      
-      console.log('[startNextServer] 🔍 检查静态资源...');
-      console.log(`[startNextServer] standalone .next/static 存在: ${fs.existsSync(staticTargetDir)}`);
-      console.log(`[startNextServer] resources static 存在: ${fs.existsSync(staticSourceDir)}`);
-      console.log(`[startNextServer] resources public 存在: ${fs.existsSync(publicSourceDir)}`);
-      
-      try {
-        // 如果 standalone 中没有 static，但 resources 中有，创建链接
-        if (fs.existsSync(staticSourceDir) && !fs.existsSync(staticTargetDir)) {
-          fs.symlinkSync(staticSourceDir, staticTargetDir, 'dir');
-          console.log('[startNextServer] ✅ 静态资源链接创建成功');
-        }
+        });
         
-        // 如果 standalone 中没有 public，但 resources 中有，创建链接  
-        if (fs.existsSync(publicSourceDir) && !fs.existsSync(publicTargetDir)) {
-          fs.symlinkSync(publicSourceDir, publicTargetDir, 'dir');
-          console.log('[startNextServer] ✅ 公共资源链接创建成功');
-        }
+        console.log('[startNextServer] ✅ 方案2 Next.js 主进程集成完成');
+        return; // 成功启动，直接返回
         
-        // 如果都存在，检查内容
-        if (fs.existsSync(staticTargetDir)) {
-          const staticFiles = fs.readdirSync(staticTargetDir);
-          console.log(`[startNextServer] static 目录内容: ${staticFiles.length} 个文件/目录`);
-        }
       } catch (error) {
-        console.log('[startNextServer] ⚠️ 资源检查失败:', error.message);
+        console.error('[startNextServer] ❌ 主进程集成失败:', error);
+        console.log('[startNextServer] 🔄 回退到备用服务器...');
+        
+        await startFallbackServer(localServerPort, userDataPath);
+        console.log('[startNextServer] ✅ 备用服务器已启动，应用可用');
+        return;
       }
       
-      // 等待服务器启动
-      console.log('[startNextServer] 开始等待服务器就绪...');
-      await waitForServer(localServerPort);
-      console.log('[startNextServer] ✅ Next.js 服务器就绪完成');
+      // 注意：方案2已经在上面直接返回，下面的代码不会执行
     }
   } catch (error) {
     console.error('启动 Next.js 服务器失败:', error);
