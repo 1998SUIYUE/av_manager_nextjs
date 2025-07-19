@@ -7,6 +7,18 @@ import { formatFileSize } from "@/utils/formatFileSize";
 import {  devWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer"; // 导入 VideoPlayer 组件
 
+// 安全的Base64编码函数，支持中文字符
+function safeBase64Encode(str: string): string {
+  try {
+    // 使用encodeURIComponent处理中文字符，然后进行base64编码
+    return btoa(encodeURIComponent(str));
+  } catch (error) {
+    console.error('Base64编码失败:', error);
+    // 如果还是失败，使用URL编码作为备选方案
+    return encodeURIComponent(str);
+  }
+}
+
 interface MovieData {
   filename: string;
   path: string;
@@ -518,7 +530,7 @@ const MoviesPage = () => {
           >
             
             <VideoPlayer
-              src={`/api/video/stream?path=${btoa(selectedVideoPath)}`}
+              src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
               filepath={selectedVideoPath} // 传递完整路径用于打开文件位置或删除
               filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
             />
@@ -576,7 +588,7 @@ const MoviesPage = () => {
                       <div className="w-full h-full bg-black rounded-lg overflow-hidden">
                         <div className="w-full h-full">
                           <VideoPlayer
-                            src={`/api/video/stream?path=${btoa(currentComparisonMovieA.absolutePath)}`}
+                            src={`/api/video/stream?path=${safeBase64Encode(currentComparisonMovieA.absolutePath)}`}
                             filepath={currentComparisonMovieA.absolutePath}
                             filename={currentComparisonMovieA.filename}
                           />
@@ -607,7 +619,7 @@ const MoviesPage = () => {
                       <div className="w-full h-full bg-black rounded-lg overflow-hidden">
                         <div className="w-full h-full">
                           <VideoPlayer
-                            src={`/api/video/stream?path=${btoa(currentComparisonMovieB.absolutePath)}`}
+                            src={`/api/video/stream?path=${safeBase64Encode(currentComparisonMovieB.absolutePath)}`}
                             filepath={currentComparisonMovieB.absolutePath}
                             filename={currentComparisonMovieB.filename}
                           />

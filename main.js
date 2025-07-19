@@ -81,6 +81,242 @@ try {
   
   fs.writeFileSync(testLogFilePath, `=== AV Manager 启动日志 ===\n启动时间: ${new Date().toISOString()}\n\n`);
   console.log(`[Early Startup] Debug log initialized: ${testLogFilePath}`);
+  
+  // 添加文件扫描功能
+  function scanForVideoFiles(directoryPath, logFilePath) {
+    const supportedExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
+    const foundFiles = [];
+    
+    function writeLog(message) {
+      const timestamp = new Date().toISOString();
+      const logMessage = `[${timestamp}] ${message}\n`;
+      try {
+        fs.appendFileSync(logFilePath, logMessage);
+        console.log(`[FILE_SCAN] ${message}`);
+      } catch (error) {
+        console.error(`[FILE_SCAN] 写入日志失败:`, error);
+      }
+    }
+    
+    function scanDirectory(currentPath, depth = 0) {
+      const indent = '  '.repeat(depth);
+      
+      try {
+        // 检查目录权限
+        fs.accessSync(currentPath, fs.constants.R_OK);
+        writeLog(`${indent}📂 扫描目录: ${currentPath}`);
+        
+        const files = fs.readdirSync(currentPath);
+        writeLog(`${indent}   发现 ${files.length} 个条目`);
+        
+        files.forEach(file => {
+          const fullPath = path.join(currentPath, file);
+          
+          try {
+            // 检查文件权限
+            fs.accessSync(fullPath, fs.constants.R_OK);
+            const stat = fs.statSync(fullPath);
+            
+            if (stat.isDirectory()) {
+              // 完全递归扫描，不限制深度
+              scanDirectory(fullPath, depth + 1);
+            } else {
+              const ext = path.extname(file).toLowerCase();
+              if (supportedExtensions.includes(ext)) {
+                const sizeInMB = (stat.size / (1024 * 1024)).toFixed(2);
+                const sizeInGB = (stat.size / (1024 * 1024 * 1024)).toFixed(2);
+                
+                foundFiles.push({
+                  filename: file,
+                  path: currentPath,
+                  fullPath: fullPath,
+                  size: stat.size,
+                  sizeInMB: sizeInMB,
+                  sizeInGB: sizeInGB,
+                  extension: ext,
+                  modifiedAt: new Date(stat.mtime).toISOString()
+                });
+                
+                writeLog(`${indent}   ✅ 找到视频文件: ${file}`);
+                writeLog(`${indent}      路径: ${fullPath}`);
+                writeLog(`${indent}      大小: ${sizeInGB}GB (${sizeInMB}MB)`);
+                writeLog(`${indent}      修改时间: ${new Date(stat.mtime).toLocaleString()}`);
+              }
+            }
+          } catch (fileError) {
+            if (fileError.code === 'EACCES' || fileError.code === 'EPERM') {
+              writeLog(`${indent}   ❌ 权限不足: ${file}`);
+            } else if (fileError.code === 'ENOENT') {
+              writeLog(`${indent}   ⚠️ 文件不存在: ${file}`);
+            } else {
+              writeLog(`${indent}   ❓ 文件错误: ${file} - ${fileError.message}`);
+            }
+          }
+        });
+      } catch (dirError) {
+        if (dirError.code === 'EACCES' || dirError.code === 'EPERM') {
+          writeLog(`${indent}❌ 目录权限不足: ${currentPath}`);
+        } else if (dirError.code === 'ENOENT') {
+          writeLog(`${indent}⚠️ 目录不存在: ${currentPath}`);
+        } else {
+          writeLog(`${indent}❓ 目录错误: ${currentPath} - ${dirError.message}`);
+        }
+      }
+    }
+    
+    if (directoryPath && fs.existsSync(directoryPath)) {
+      writeLog(`🔍 开始扫描目录: ${directoryPath}`);
+      const startTime = Date.now();
+      
+      scanDirectory(directoryPath);
+      
+      const endTime = Date.now();
+      const scanTime = endTime - startTime;
+      
+      writeLog(`📊 扫描完成统计:`);
+      writeLog(`   ⏱️ 扫描耗时: ${scanTime}ms`);
+      writeLog(`   📄 找到视频文件: ${foundFiles.length}个`);
+      writeLog(`   📁 扫描目录: ${directoryPath}`);
+      
+      if (foundFiles.length > 0) {
+        writeLog(`📋 视频文件列表:`);
+        foundFiles.forEach((file, index) => {
+          writeLog(`   ${index + 1}. ${file.filename} (${file.sizeInGB}GB)`);
+        });
+        
+        // 按扩展名统计
+        const extensionStats = foundFiles.reduce((acc, file) => {
+          acc[file.extension] = (acc[file.extension] || 0) + 1;
+          return acc;
+        }, {});
+        
+        writeLog(`📈 文件类型统计:`);
+        Object.entries(extensionStats).forEach(([ext, count]) => {
+          writeLog(`   ${ext}: ${count}个`);
+        });
+        
+        const totalSizeGB = foundFiles.reduce((sum, file) => sum + parseFloat(file.sizeInGB), 0);
+        writeLog(`💾 总大小: ${totalSizeGB.toFixed(2)}GB`);
+      } else {
+        writeLog(`⚠️ 未找到任何视频文件`);
+        writeLog(`支持的格式: ${supportedExtensions.join(', ')}`);
+      }
+    } else {
+      writeLog(`❌ 扫描目录不存在或无法访问: ${directoryPath}`);
+    }
+    
+    return foundFiles;
+  }
+  
+  // 将扫描函数暴露给全局，以便其他地方调用
+  global.scanForVideoFiles = scanForVideoFiles;
+  global.debugLogPath = testLogFilePath;
+  
+  // 测试扫描功能 - 扫描一些常见目录
+  function testScanCommonDirectories() {
+    const commonDirectories = [
+      'C:\\Users\\Public\\Videos',
+      'D:\\',
+      'E:\\',
+      process.cwd(), // 当前工作目录
+      path.join(require('os').homedir(), 'Videos'), // 用户视频目录
+      path.join(require('os').homedir(), 'Desktop'), // 用户桌面
+    ];
+    
+    writeLog(`🧪 开始测试扫描常见目录...`);
+    
+    commonDirectories.forEach(dir => {
+      if (fs.existsSync(dir)) {
+        writeLog(`📁 测试扫描目录: ${dir}`);
+        try {
+          // 只扫描第一层，避免过深
+          const files = fs.readdirSync(dir);
+          writeLog(`   发现 ${files.length} 个条目`);
+          
+          let videoCount = 0;
+          files.slice(0, 20).forEach(file => { // 只检查前20个文件
+            const fullPath = path.join(dir, file);
+            try {
+              const stat = fs.statSync(fullPath);
+              if (!stat.isDirectory()) {
+                const ext = path.extname(file).toLowerCase();
+                if (['.mp4', '.mkv', '.avi', '.mov', '.webm'].includes(ext)) {
+                  videoCount++;
+                  const sizeInGB = (stat.size / (1024 * 1024 * 1024)).toFixed(2);
+                  writeLog(`   ✅ 找到视频: ${file} (${sizeInGB}GB)`);
+                }
+              }
+            } catch (fileError) {
+              // 忽略单个文件错误
+            }
+          });
+          
+          if (videoCount === 0) {
+            writeLog(`   ℹ️ 该目录未发现视频文件`);
+          }
+        } catch (error) {
+          writeLog(`   ❌ 无法访问目录: ${error.message}`);
+        }
+      } else {
+        writeLog(`   ⚠️ 目录不存在: ${dir}`);
+      }
+    });
+    
+    writeLog(`🧪 测试扫描完成`);
+  }
+  
+  function writeLog(message) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}\n`;
+    try {
+      fs.appendFileSync(testLogFilePath, logMessage);
+      console.log(`[MAIN_SCAN] ${message}`);
+    } catch (error) {
+      console.error(`[MAIN_SCAN] 写入日志失败:`, error);
+    }
+  }
+  
+  // 读取用户设置的电影目录并扫描
+  function scanUserMovieDirectory() {
+    try {
+      const movieDirectoryPath = path.join(testUserDataPath, 'movie-directory.txt');
+      
+      if (fs.existsSync(movieDirectoryPath)) {
+        const userDirectory = fs.readFileSync(movieDirectoryPath, 'utf-8').trim();
+        
+        if (userDirectory) {
+          writeLog(`📁 读取到用户设置的电影目录: ${userDirectory}`);
+          writeLog(`🔍 开始完整扫描用户目录...`);
+          
+          // 使用完整扫描功能扫描用户设置的目录
+          const foundFiles = scanForVideoFiles(userDirectory, testLogFilePath);
+          
+          writeLog(`✅ 用户目录扫描完成，共找到 ${foundFiles.length} 个视频文件`);
+        } else {
+          writeLog(`⚠️ 用户尚未设置电影目录`);
+          // 如果用户没有设置目录，则进行测试扫描
+          testScanCommonDirectories();
+        }
+      } else {
+        writeLog(`⚠️ 电影目录配置文件不存在: ${movieDirectoryPath}`);
+        // 如果配置文件不存在，则进行测试扫描
+        testScanCommonDirectories();
+      }
+    } catch (error) {
+      writeLog(`❌ 读取用户电影目录失败: ${error.message}`);
+      // 出错时进行测试扫描
+      testScanCommonDirectories();
+    }
+  }
+  
+  // 延迟执行扫描，避免阻塞启动
+  setTimeout(() => {
+    try {
+      scanUserMovieDirectory();
+    } catch (error) {
+      writeLog(`❌ 扫描失败: ${error.message}`);
+    }
+  }, 3000); // 3秒后执行
 } catch (e) {
   console.error(`[Early Startup] Failed to setup debug log: ${e.message}`);
 }

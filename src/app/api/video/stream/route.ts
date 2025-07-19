@@ -114,9 +114,24 @@ export async function GET(
       return new NextResponse('缺少文件路径', { status: 400 });
     }
 
-    // 解码并处理路径 (Base64 解码)
-    let absolutePath = Buffer.from(encodedPath, 'base64').toString('utf8');
-    devWithTimestamp(`[video API] Base64 decoded path: ${absolutePath}`);
+    // 安全解码路径，支持中文字符
+    let absolutePath: string;
+    try {
+      // 首先尝试新的编码方式：先base64解码，再URI解码
+      const base64Decoded = Buffer.from(encodedPath, 'base64').toString('utf8');
+      absolutePath = decodeURIComponent(base64Decoded);
+      devWithTimestamp(`[video API] Safe decoded path: ${absolutePath}`);
+    } catch (error) {
+      try {
+        // 如果失败，尝试直接URI解码（备选方案）
+        absolutePath = decodeURIComponent(encodedPath);
+        devWithTimestamp(`[video API] URI decoded path: ${absolutePath}`);
+      } catch (fallbackError) {
+        // 最后尝试原始的base64解码（向后兼容）
+        absolutePath = Buffer.from(encodedPath, 'base64').toString('utf8');
+        devWithTimestamp(`[video API] Legacy base64 decoded path: ${absolutePath}`);
+      }
+    }
 
     // 将路径中的所有反斜杠替换为正斜杠，以确保跨平台兼容性 (Windows 路径)
     absolutePath = absolutePath.replace(/\\/g, '/');
