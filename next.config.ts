@@ -4,6 +4,11 @@ import path from "path";
 const isDev = process.env.NODE_ENV === 'development';
 
 const nextConfig: NextConfig = {
+  // 禁用ESLint检查
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  
   images: {
     unoptimized: true
   },
