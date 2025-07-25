@@ -204,7 +204,7 @@ export async function updateMovieMetadataCache(
   coverUrl: string | null, 
   title: string | null, 
   actress: string | null,
-  kinds?: string[],
+  kinds?: string[] | null,
   eloData?: {
     elo?: number;
     matchCount?: number;

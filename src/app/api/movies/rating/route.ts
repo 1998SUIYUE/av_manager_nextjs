@@ -136,7 +136,8 @@ async function updateRatingsAsync(
         movieACode,
         currentMetadataA?.coverUrl || null, // 使用现有coverUrl，如果不存在则为null
         currentMetadataA?.title || null,    // 使用现有title，如果不存在则为null
-        currentMetadataA?.actress || null,  // 使用现有actress，如果不存在则为null
+        currentMetadataA?.actress || null,
+        currentMetadataA?.kinds || null,  // 使用现有actress，如果不存在则为null
         {
           elo: newRatingA.elo,
           matchCount: newRatingA.matchCount,
@@ -151,7 +152,8 @@ async function updateRatingsAsync(
         movieBCode,
         currentMetadataB?.coverUrl || null, // 使用现有coverUrl，如果不存在则为null
         currentMetadataB?.title || null,    // 使用现有title，如果不存在则为null
-        currentMetadataB?.actress || null,  // 使用现有actress，如果不存在则为null
+        currentMetadataB?.actress || null, 
+        currentMetadataB?.kinds || null, // 使用现有actress，如果不存在则为null
         {
           elo: newRatingB.elo,
           matchCount: newRatingB.matchCount,
