@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
             'accept-encoding': 'gzip, deflate, br, zstd',
             'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'cache-control': 'max-age=0',
-            'cookie': 'PHPSESSID=idet27h6gk7o9i9sq71p6kec66; existmag=mag', 
+            'cookie': 'existmag=mag', 
             'priority': 'u=0, i',
             'referer': 'https://www.javbus.com/',
             'sec-ch-ua': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',

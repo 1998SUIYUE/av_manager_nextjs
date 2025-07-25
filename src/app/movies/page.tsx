@@ -33,6 +33,7 @@ interface MovieData {
   coverUrl?: string | null; // 封面图片URL，可选
   displayTitle?: string; // 用于显示给用户的标题，可能与原始title不同
   actress?: string | null; // 女优名字，可选
+  kinds?:string[]; // 新增：电影类别
   // Elo评分相关字段
   elo?: number; // Elo评分
   matchCount?: number; // 对比次数
@@ -60,6 +61,14 @@ const MoviesPage = () => {
 
   // 新增：选中女优的状态
   const [selectedActress, setSelectedActress] = useState<string | null>(null);
+  // 新增：电影类别状态
+  const [genres, setGenres] = useState<string[]>([]); 
+  // 新增：选中类别状态
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+
+  // 新增：控制筛选器折叠状态
+  const [showActressFilters, setShowActressFilters] = useState<boolean>(true); 
+  const [showGenreFilters, setShowGenreFilters] = useState<boolean>(true);
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
@@ -102,11 +111,16 @@ const MoviesPage = () => {
       // 直接设置所有电影
       setMovies(data.movies);
       setTotalMovies(data.total);
-      let tmp_act = []
-      for(const _ of data.movies){
-        tmp_act.push(_.actress)
+      
+      let tmp_act: string[] = [];
+      let tmp_kinds: string[] = []; // 临时存储电影类别
+      for(const movie of data.movies){ // 遍历data.movies而不是actress
+        if (movie.actress) tmp_act.push(movie.actress); // 确保actress存在
+        if (movie.kinds) tmp_kinds.push(...movie.kinds); // 确保kinds存在并展开
       }
-      setActress(Array.from(new Set(tmp_act.filter(Boolean) as string[])))
+      setActress(Array.from(new Set(tmp_act.filter(Boolean) as string[])));
+      setGenres(Array.from(new Set(tmp_kinds.filter(Boolean) as string[]))); // 设置唯一的电影类别
+
     } catch (e: unknown) {
       devWithTimestamp("Error fetching movies:", e);
       setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
@@ -137,7 +151,7 @@ const MoviesPage = () => {
   // 处理电影删除操作
   const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
     if (!filePath) {
-      alert("无法删除电影: 文件路径未提供。");
+      alert("无法删除电影: 文件路径未提供。根据您提供的报错信息，这里不需要对该方法进行额外修改。请确保 filepath 参数的传入是正确的。如果问题依然存在，请提供更详细的错误日志或上下文。");
       return;
     }
 
@@ -414,7 +428,7 @@ const MoviesPage = () => {
   const sortedAndFilteredMovies = useMemo(() => {
     let currentMovies = [...movies];
 
-    // 搜索过滤
+    // 1. Apply general search query (from text input)
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
       currentMovies = currentMovies.filter(movie => 
@@ -426,6 +440,21 @@ const MoviesPage = () => {
       );
     }
 
+    // 2. Apply actress filter if selected
+    if (selectedActress) {
+      const lowerCaseActress = selectedActress.toLowerCase();
+      currentMovies = currentMovies.filter(movie => 
+        movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
+      );
+    }
+
+    // 3. Apply genre filter if selected
+    if (selectedGenre) {
+      currentMovies = currentMovies.filter(movie => 
+        movie.kinds && movie.kinds.includes(selectedGenre)
+      );
+    }
+
     if (sortMode === "time") {
       currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
     } else if (sortMode === "size") {
@@ -434,7 +463,7 @@ const MoviesPage = () => {
       currentMovies.sort((a, b) => (b.elo || 1000) - (a.elo || 1000));
     }
     return currentMovies;
-  }, [movies, sortMode, searchQuery]); // 添加 searchQuery 到依赖项
+  }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]); // 添加所有相关依赖项
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
@@ -493,28 +522,79 @@ const MoviesPage = () => {
           </button>
         </div>
       </div>
-      <div>
-      {/* 女优按钮显示 */}
-      {actress && actress.map((name, index) => (
+
+      {/* 女优筛选器区域 */}
+      <div className="text-center mb-4">
         <button
-          key={index} 
-          className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-white text-black'}`}
-          onClick={() => {
-            if (selectedActress === name) {
-              // 如果点击的是当前已选中的女优，则取消选中并清空搜索
-              setSelectedActress(null);
-              setSearchQuery("");
-            } else {
-              // 否则，选中该女优并设置为搜索关键词
-              setSelectedActress(name);
-              setSearchQuery(name || "");
-            }
-          }} // 点击女优按钮时，将女优名设置为搜索关键词
+          onClick={() => setShowActressFilters(prev => !prev)}
+          className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-semibold"
         >
-          {name}
+          {showActressFilters ? '收起女优筛选' : '展开女优筛选'}
         </button>
-      ))}
       </div>
+      {showActressFilters && (
+        <div className="mb-8 p-4 bg-gray-800 rounded-lg shadow-md">
+          <h3 className="text-xl font-semibold mb-3">女优：</h3>
+          <div className="flex flex-wrap items-center mb-4">
+            {actress && actress.map((name, index) => (
+              <button
+                key={`actress-${index}`}
+                className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
+                  ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                onClick={() => {
+                  if (selectedActress === name) {
+                    setSelectedActress(null);
+                    setSearchQuery(""); // 清空搜索
+                  } else {
+                    setSelectedActress(name);
+                    setSelectedGenre(null); // 选中女优时取消选中类别
+                    setSearchQuery(name || ""); // 将女优名填入搜索框
+                  }
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 电影类别筛选器区域 */}
+      <div className="text-center mb-4">
+        <button
+          onClick={() => setShowGenreFilters(prev => !prev)}
+          className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-semibold"
+        >
+          {showGenreFilters ? '收起类别筛选' : '展开类别筛选'}
+        </button>
+      </div>
+      {showGenreFilters && (
+        <div className="mb-8 p-4 bg-gray-800 rounded-lg shadow-md">
+          <h3 className="text-xl font-semibold mb-3">类别：</h3>
+          <div className="flex flex-wrap items-center">
+            {genres && genres.map((genre, index) => (
+              <button
+                key={`genre-${index}`}
+                className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
+                  ${selectedGenre === genre ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                onClick={() => {
+                  if (selectedGenre === genre) {
+                    setSelectedGenre(null);
+                    setSearchQuery(""); // 清空搜索
+                  } else {
+                    setSelectedGenre(genre);
+                    setSelectedActress(null); // 选中类别时取消选中女优
+                    setSearchQuery(""); // 类别不直接设置搜索框，只影响过滤
+                  }
+                }}
+              >
+                {genre}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading && loadingStartTime && (
         <p className="text-center text-xl mb-4">
           加载中... 已用时: {elapsedLoadingTime} 秒
@@ -524,7 +604,7 @@ const MoviesPage = () => {
 
       <div className="text-center mb-6">
         <p className="text-lg mb-2">总电影数: {totalMovies}</p>
-        {searchQuery && (
+        {(searchQuery || selectedActress || selectedGenre) && (
           <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
         )}
       </div>
