@@ -67,8 +67,8 @@ const MoviesPage = () => {
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
 
   // 新增：控制筛选器折叠状态
-  const [showActressFilters, setShowActressFilters] = useState<boolean>(true); 
-  const [showGenreFilters, setShowGenreFilters] = useState<boolean>(true);
+  const [showActressFilters, setShowActressFilters] = useState<boolean>(false); 
+  const [showGenreFilters, setShowGenreFilters] = useState<boolean>(false);
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
@@ -240,7 +240,7 @@ const MoviesPage = () => {
         devWithTimestamp(`[startComparison] 随机选择了影片B: ${selectedMovieB.code}`);
       }
     } else {
-      // 2. 如果所有影片都已评分，则选择评分次数最少的影片作为A
+      // 2. 如果所有影片都已评分，则选择评分次数最少的影片作为A的候选
       availableMovies.sort((a, b) => (a.matchCount || 0) - (b.matchCount || 0));
       
       // 从评分次数最少的20%影片中随机选择
@@ -419,6 +419,7 @@ const MoviesPage = () => {
     return movies.find(movie => movie.code === comparisonMovieA.code) || comparisonMovieA;
   }, [movies, comparisonMovieA]);
 
+  // 获取最新的对比电影数据
   const currentComparisonMovieB = useMemo(() => {
     if (!comparisonMovieB) return null;
     return movies.find(movie => movie.code === comparisonMovieB.code) || comparisonMovieB;
@@ -469,7 +470,7 @@ const MoviesPage = () => {
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <h1 className="text-4xl font-bold text-center mb-8">电影列表</h1>
 
-      <div className="mb-8 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
+      <div className="mb-2 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
         {/* 搜索输入框 */}
         <div className="relative w-full sm:w-1/2">
             <input
@@ -524,76 +525,74 @@ const MoviesPage = () => {
       </div>
 
       {/* 女优筛选器区域 */}
-      <div className="text-center mb-4">
-        <button
-          onClick={() => setShowActressFilters(prev => !prev)}
-          className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-semibold"
-        >
-          {showActressFilters ? '收起女优筛选' : '展开女优筛选'}
-        </button>
-      </div>
-      {showActressFilters && (
-        <div className="mb-8 p-4 bg-gray-800 rounded-lg shadow-md">
-          <h3 className="text-xl font-semibold mb-3">女优：</h3>
-          <div className="flex flex-wrap items-center mb-4">
-            {actress && actress.map((name, index) => (
-              <button
-                key={`actress-${index}`}
-                className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
-                  ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-                onClick={() => {
-                  if (selectedActress === name) {
-                    setSelectedActress(null);
-                    setSearchQuery(""); // 清空搜索
-                  } else {
-                    setSelectedActress(name);
-                    setSelectedGenre(null); // 选中女优时取消选中类别
-                    setSearchQuery(name || ""); // 将女优名填入搜索框
-                  }
-                }}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
+      <div className={`mb-4 transition-all duration-300 ${showActressFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
+        <div className="flex justify-between items-center mb-2"> {/* Header for title and toggle button */} 
+          <h3 className="text-xl font-semibold">女优：</h3>
+          <button
+            onClick={() => setShowActressFilters(prev => !prev)}
+            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
+          >
+            {showActressFilters ? '收起' : '展开'}
+          </button>
         </div>
-      )}
+        <div className={`flex flex-wrap items-center -mb-2 ${showActressFilters ? '' : 'overflow-hidden max-h-7'}`}> {/* Content area for buttons, with negative margin to offset mb-2 of buttons */} 
+          
+          {actress && actress.map((name, index) => (
+            <button
+              key={`actress-${index}`}
+              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
+                ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+              onClick={() => {
+                if (selectedActress === name) {
+                  setSelectedActress(null);
+                  setSearchQuery(""); // 清空搜索
+                } else {
+                  setSelectedActress(name);
+                  setSelectedGenre(null); // 选中女优时取消选中类别
+                  setSearchQuery(name || ""); // 将女优名填入搜索框
+                }
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* 电影类别筛选器区域 */}
-      <div className="text-center mb-4">
-        <button
-          onClick={() => setShowGenreFilters(prev => !prev)}
-          className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white font-semibold"
-        >
-          {showGenreFilters ? '收起类别筛选' : '展开类别筛选'}
-        </button>
-      </div>
-      {showGenreFilters && (
-        <div className="mb-8 p-4 bg-gray-800 rounded-lg shadow-md">
-          <h3 className="text-xl font-semibold mb-3">类别：</h3>
-          <div className="flex flex-wrap items-center">
-            {genres && genres.map((genre, index) => (
-              <button
-                key={`genre-${index}`}
-                className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
-                  ${selectedGenre === genre ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-                onClick={() => {
-                  if (selectedGenre === genre) {
-                    setSelectedGenre(null);
-                    setSearchQuery(""); // 清空搜索
-                  } else {
-                    setSelectedGenre(genre);
-                    setSelectedActress(null); // 选中类别时取消选中女优
-                    setSearchQuery(""); // 类别不直接设置搜索框，只影响过滤
-                  }
-                }}
-              >
-                {genre}
-              </button>
-            ))}
-          </div>
+      <div className={`mb-4 transition-all duration-300 ${showGenreFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
+        <div className="flex justify-between items-center mb-2"> {/* Header for title and toggle button */} 
+          <h3 className="text-xl font-semibold">类别：</h3>
+          <button
+            onClick={() => setShowGenreFilters(prev => !prev)}
+            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
+          >
+            {showGenreFilters ? '收起' : '展开'}
+          </button>
         </div>
-      )}
+        <div className={`flex flex-wrap items-center -mb-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-7'}`}> {/* Content area for buttons, with negative margin to offset mb-2 of buttons */} 
+          
+          {genres && genres.map((genre, index) => (
+            <button
+              key={`genre-${index}`}
+              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
+                ${selectedGenre === genre ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+              onClick={() => {
+                if (selectedGenre === genre) {
+                  setSelectedGenre(null);
+                  setSearchQuery(""); // 清空搜索
+                } else {
+                  setSelectedGenre(genre);
+                  setSelectedActress(null); // 选中类别时取消选中女优
+                  setSearchQuery(""); // 类别不直接设置搜索框，只影响过滤
+                }
+              }}
+            >
+              {genre}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {loading && loadingStartTime && (
         <p className="text-center text-xl mb-4">
@@ -603,7 +602,7 @@ const MoviesPage = () => {
       {error && <p className="text-center text-red-500 mb-4">错误: {error}</p>}
 
       <div className="text-center mb-6">
-        <p className="text-lg mb-2">总电影数: {totalMovies}</p>
+        <p className="text-lg mb-2 mt-2">总电影数: {totalMovies}</p>
         {(searchQuery || selectedActress || selectedGenre) && (
           <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
         )}

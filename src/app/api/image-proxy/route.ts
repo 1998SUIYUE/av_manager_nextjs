@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       try {
         const response = await axios.get(imageUrl, {
           responseType: "arraybuffer",
-          timeout: 15000, // 增加超时时间到15秒
+          timeout: 2000, // 增加超时时间到15秒
           headers: {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'accept-encoding': 'gzip, deflate, br, zstd',
