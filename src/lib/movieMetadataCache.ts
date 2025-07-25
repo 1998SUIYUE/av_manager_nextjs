@@ -10,6 +10,7 @@ export interface MovieMetadata {
   title: string | null; // 电影标题
   actress: string | null; // 女优名字
   lastUpdated: number; // 最后一次更新时间戳 (毫秒)
+  kinds: string[] | undefined;
   // Elo评分相关字段
   elo?: number; // Elo评分 (默认1000)
   matchCount?: number; // 对比次数
@@ -46,6 +47,7 @@ interface WriteOperation {
   title: string | null;
   actress: string | null;
   timestamp: number;
+  kinds?:string[] | undefined
   // Elo评分相关数据
   elo?: number;
   matchCount?: number;
@@ -202,6 +204,7 @@ export async function updateMovieMetadataCache(
   coverUrl: string | null, 
   title: string | null, 
   actress: string | null,
+  kinds?: string[],
   eloData?: {
     elo?: number;
     matchCount?: number;
@@ -221,6 +224,7 @@ export async function updateMovieMetadataCache(
     title,
     actress,
     timestamp: Date.now(),
+    ...(kinds && {kinds}),
     // 添加Elo评分数据
     ...(eloData && {
       elo: eloData.elo,
@@ -282,7 +286,7 @@ async function flushWriteQueue() {
     for (const operation of operationsToProcess) {
       const { 
         code, coverUrl, title, actress, timestamp,
-        elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches
+        elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches,kinds
       } = operation;
       
       const existingIndex = cache.findIndex(m => m.code === code);
@@ -302,14 +306,15 @@ async function flushWriteQueue() {
           drawCount: drawCount !== undefined ? drawCount : existing.drawCount,
           lossCount: lossCount !== undefined ? lossCount : existing.lossCount,
           lastRated: lastRated !== undefined ? lastRated : existing.lastRated,
-          recentMatches: recentMatches !== undefined ? recentMatches : existing.recentMatches
+          recentMatches: recentMatches !== undefined ? recentMatches : existing.recentMatches,
+          kinds:kinds !== undefined ? kinds : existing.kinds
         };
         devWithTimestamp(`[flushWriteQueue] 批量更新现有缓存条目: ${code}`);
       } else {
         // 添加新条目到开头
         cache.unshift({
           code, coverUrl, title, actress, lastUpdated: timestamp,
-          elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches
+          elo, matchCount, winCount, drawCount, lossCount, lastRated, recentMatches,kinds
         });
         devWithTimestamp(`[flushWriteQueue] 批量添加新缓存条目: ${code}`);
       }
