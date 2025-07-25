@@ -103,7 +103,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         'upgrade-insecure-requests': '1',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
       },
-      timeout: 15000, // 增加超时时间到15秒
+      timeout: 3000, // 增加超时时间到15秒
       httpsAgent: AGENT, // 添加代理配置
       httpAgent: AGENT,  // 也为http请求添加代理
     });
@@ -255,7 +255,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 1; // 降低并发数到3，减少被屏蔽风险
+  const concurrencyLimit = 3; // 降低并发数到3，减少被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
 
   // 启动内存监控
