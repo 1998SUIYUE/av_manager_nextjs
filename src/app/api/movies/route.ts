@@ -7,7 +7,7 @@ import {
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
 import { writeFile, readFile } from "fs/promises";
-import { devWithTimestamp } from "@/utils/logger";
+import { devWithTimestamp, prodWithTimestamp } from "@/utils/logger";
 import { HttpsProxyAgent } from "https-proxy-agent"; // 导入代理模块
 
 // 支持的视频文件扩展名列表
@@ -20,7 +20,7 @@ const FILE_SIZE_THRESHOLD = 100 * 1024 * 1024;
 const SCRAPE_DELAY_MS = 0; // 0秒延迟
 
 // 本地代理地址
-const PROXY_URL = 'http://127.0.0.1:9890'; 
+const PROXY_URL = "http://127.0.0.1:9890";
 const AGENT = new HttpsProxyAgent(PROXY_URL);
 
 // 定义电影文件接口
@@ -33,7 +33,7 @@ interface MovieFile {
   extension: string;
   title: string;
   displayTitle?: string;
-  kinds?:string[];
+  kinds?: string[];
   year?: string;
   modifiedAt: number;
   code?: string;
@@ -71,45 +71,73 @@ function parseMovieFilename(filename: string): {
   };
 }
 
-
-
 /**
  * 使用 Playwright 抓取电影封面和元数据。
  * @param code - 用于搜索的电影代码或关键字。
  * @returns 返回包含电影标题、演员和封面URL的对象。
  */
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  
-  devWithTimestamp(
+  prodWithTimestamp(
     `[fetchCoverUrl] 开始处理番号: ${code}, 目标网站: https://www.javbus.com/${code}`
   );
   try {
-    const res = await axios.get(`https://www.javbus.com/${code}`, {
+    const res = await axios.get(`https://www.javbus.com/search/${code}`, {
       headers: {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'accept-encoding': 'gzip, deflate, br, zstd',
-        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'cache-control': 'max-age=0',
-        'cookie': 'existmag=mag', 
-        'priority': 'u=0, i',
-        'referer': 'https://www.javbus.com/',
-        'sec-ch-ua': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin', 
-        'sec-fetch-user': '?1',
-        'upgrade-insecure-requests': '1',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "cache-control": "max-age=0",
+        cookie: "existmag=mag",
+        priority: "u=0, i",
+        referer: "https://www.javbus.com/",
+        "sec-ch-ua":
+          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
       },
       timeout: 3000, // 增加超时时间到15秒
       httpsAgent: AGENT, // 添加代理配置
-      httpAgent: AGENT,  // 也为http请求添加代理
+      httpAgent: AGENT, // 也为http请求添加代理
     });
 
-    const $ = cheerio.load(res.data);
+    const $0 = cheerio.load(res.data);
+    const nexturl = $0("#waterfall > div > a").attr('href') || ""
     // console.log("获取的网站数据为",res.data)
+    const res1 = await axios.get(nexturl, {
+      headers: {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "cache-control": "max-age=0",
+        cookie: "existmag=mag",
+        priority: "u=0, i",
+        referer: "https://www.javbus.com/",
+        "sec-ch-ua":
+          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      },
+      timeout: 3000, // 增加超时时间到15秒
+      httpsAgent: AGENT, // 添加代理配置
+      httpAgent: AGENT, // 也为http请求添加代理
+    });
+    const $ = cheerio.load(res1.data);
     let coverUrl =
       "https://www.javbus.com" +
         $(
@@ -120,16 +148,30 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       $(
         "body > div.container > div.row.movie > div.col-md-3.info > p:last-child > span > a"
       ).text() || "";
-    let blocked = ["高畫質", "DMM獨家", "單體作品","數位馬賽克","多選提交","4K","フルハイビジョン(FHD)","MGSだけのおまけ映像付き","アクメ・オーガズム"]; // 将blocked声明提前
+    let blocked = [
+      "高畫質",
+      "DMM獨家",
+      "單體作品",
+      "數位馬賽克",
+      "多選提交",
+      "4K",
+      "フルハイビジョン(FHD)",
+      "MGSだけのおまけ映像付き",
+      "アクメ・オーガズム",
+    ]; // 将blocked声明提前
 
-    
-    let kinds_index = $("body > div.container > div.row.movie > div.col-md-3.info > p.header")
-    let kinds = kinds_index.next("p")
+    let kinds_index = $(
+      "body > div.container > div.row.movie > div.col-md-3.info > p.header"
+    );
+    let kinds = kinds_index
+      .next("p")
       .text()
       .trim()
       .split(/\s+/) // 用正则分隔多个空格、换行
       .map((tag) => tag.trim()) // 去掉 tag 前后空白
-      .filter((tag) => tag && !blocked.includes(tag) && !/[\u30A0-\u30FF]/.test(tag)); // 非空 且不在黑名单，且不包含片假名
+      .filter(
+        (tag) => tag && !blocked.includes(tag) && !/[\u30A0-\u30FF]/.test(tag)
+      ); // 非空 且不在黑名单，且不包含片假名
 
     // 5. 处理封面图片代理
     if (coverUrl) {
@@ -181,7 +223,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         coverUrl && !coverUrl.includes("placeholder-image.svg")
           ? coverUrl
           : null;
-      devWithTimestamp(
+      prodWithTimestamp(
         `[fetchCoverUrl] [manko.fun] 番号 ${code} 处理完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}`
       );
       await updateMovieMetadataCache(
@@ -193,14 +235,14 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
       );
       return { coverUrl: finalCoverUrl, title, actress, kinds }; // 确保返回kinds
     } else {
-      devWithTimestamp(
+      prodWithTimestamp(
         `[fetchCoverUrl] [manko.fun] 番号 ${code} 处理失败 - 未获取到任何元数据`
       );
     }
-    
+
     return { coverUrl, title, actress, kinds }; // 确保在未获取到任何元数据时也返回kinds
   } catch (e) {
-    devWithTimestamp(`[fetchCoverUrl] 处理番号: ${code}, 失败${e}`);
+    prodWithTimestamp(`[fetchCoverUrl] 处理番号: ${code}, 失败${e}`);
     return { coverUrl: null, title: null, actress: null, kinds: [] }; // 异常情况下也返回完整结构
   }
 }
@@ -282,7 +324,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
         // 检查缓存是否完整：所有关键信息都不为null
         const hasCompleteCache =
           cachedMetadata &&
-          cachedMetadata.coverUrl !== "" &&
+          cachedMetadata.coverUrl !== null &&
           cachedMetadata.title !== "";
 
         if (hasCompleteCache) {
@@ -297,8 +339,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                   drawCount: cachedMetadata.drawCount || 0,
                   lossCount: cachedMetadata.lossCount || 0,
                   winRate: cachedMetadata.matchCount
-                    ? (cachedMetadata.winCount || 0) /
-                      cachedMetadata.matchCount
+                    ? (cachedMetadata.winCount || 0) / cachedMetadata.matchCount
                     : 0,
                 }
               : {};
@@ -308,7 +349,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
             coverUrl: cachedMetadata.coverUrl,
             displayTitle: cachedMetadata.title || undefined,
             actress: cachedMetadata.actress,
-            kinds:cachedMetadata.kinds,
+            kinds: cachedMetadata.kinds,
             ...eloData,
           });
 
@@ -324,8 +365,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
           `[processMovieFiles] ❌ ${movie.code} 缓存读取失败，需要网络请求`
         );
       }
-    }
-    else {
+    } else {
       // 没有番号的电影直接添加
       cachedMovies.push(movie);
     }
@@ -335,7 +375,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   processedMovies.push(...cachedMovies);
 
   // 按照用户逻辑：不需要快速返回策略，直接处理所有电影
-  devWithTimestamp(
+  prodWithTimestamp(
     `[processMovieFiles] 缓存命中 ${cachedMovies.length}个, 需要网络获取 ${needsFetchMovies.length}个`
   );
 
@@ -344,7 +384,11 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
     for (let i = 0; i < needsFetchMovies.length; i += batchSize) {
       const batch = needsFetchMovies.slice(i, i + batchSize);
       devWithTimestamp(
-        `[processMovieFiles] 处理网络请求批次 ${ Math.floor(i / batchSize) + 1 }/${Math.ceil(needsFetchMovies.length / batchSize)}, 文件数: ${ batch.length }`
+        `[processMovieFiles] 处理网络请求批次 ${
+          Math.floor(i / batchSize) + 1
+        }/${Math.ceil(needsFetchMovies.length / batchSize)}, 文件数: ${
+          batch.length
+        }`
       );
 
       // 检查内存使用情况
@@ -419,12 +463,14 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                     }
                   } catch (eloError) {
                     devWithTimestamp(
-                      `[processMovieFiles] ⚠️ ${movie.code} 获取评分数据失败:`, eloError
+                      `[processMovieFiles] ⚠️ ${movie.code} 获取评分数据失败:`,
+                      eloError
                     );
                   }
                 } catch (error) {
                   devWithTimestamp(
-                    `处理电影 ${movie.filename} 时发生错误:`, error
+                    `处理电影 ${movie.filename} 时发生错误:`,
+                    error
                   );
                 }
               }
@@ -667,7 +713,9 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
   devWithTimestamp(`[scanMovieDirectory] 尝试不同路径格式:`);
   alternativePaths.forEach((altPath, index) => {
     devWithTimestamp(
-      `[scanMovieDirectory] - 格式${ index + 1 }: "${altPath}" 存在: ${fs.existsSync(altPath)}`
+      `[scanMovieDirectory] - 格式${
+        index + 1
+      }: "${altPath}" 存在: ${fs.existsSync(altPath)}`
     );
   });
   const movieFiles: MovieFile[] = []; // 用于存储扫描到的电影文件信息
@@ -748,20 +796,28 @@ async function scanMovieDirectory(directoryPath: string, baseUrl: string) {
                 // devWithTimestamp(`[scanDirectory] 跳过文件 (不支持的格式): ${file} (扩展名: ${ext})`);
               } else if (stats.size < FILE_SIZE_THRESHOLD) {
                 devWithTimestamp(
-                  `[scanDirectory] 跳过文件 (文件太小): ${file} (大小: ${( stats.size / (1024 * 1024 * 1024) ).toFixed(2)}GB, 阈值: ${( FILE_SIZE_THRESHOLD / (1024 * 1024 * 1024) ).toFixed(2)}GB)`
+                  `[scanDirectory] 跳过文件 (文件太小): ${file} (大小: ${(
+                    stats.size /
+                    (1024 * 1024 * 1024)
+                  ).toFixed(2)}GB, 阈值: ${(
+                    FILE_SIZE_THRESHOLD /
+                    (1024 * 1024 * 1024)
+                  ).toFixed(2)}GB)`
                 );
               }
             }
           }
         } catch (fileError) {
           devWithTimestamp(
-            `[scanDirectory] 处理文件 ${file} 时发生错误:`, fileError
+            `[scanDirectory] 处理文件 ${file} 时发生错误:`,
+            fileError
           );
         }
       }
     } catch (dirError) {
       devWithTimestamp(
-        `[scanDirectory] 扫描目录 ${currentPath} 时发生错误:`, dirError
+        `[scanDirectory] 扫描目录 ${currentPath} 时发生错误:`,
+        dirError
       );
     }
   }
@@ -893,7 +949,7 @@ export async function GET(request: Request) {
     for (let i = 0; i < pathVariants.length; i++) {
       const variant = pathVariants[i];
       const exists = fs.existsSync(variant);
-      devWithTimestamp(`[GET] - 格式${ i + 1 }: "${variant}" 存在: ${exists}`);
+      devWithTimestamp(`[GET] - 格式${i + 1}: "${variant}" 存在: ${exists}`);
       if (exists && !validPath) {
         validPath = variant;
         devWithTimestamp(`[GET] - 选择有效路径: "${validPath}"`);
