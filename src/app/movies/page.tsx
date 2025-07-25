@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, use } from "react";
 import MovieCard from "@/components/MovieCard";
 import { formatFileSize } from "@/utils/formatFileSize";
 import {  devWithTimestamp } from "@/utils/logger";
@@ -55,8 +55,11 @@ const MoviesPage = () => {
   const [elapsedLoadingTime, setElapsedLoadingTime] = useState<number>(0); // 已用加载时间
   const [sortMode, setSortMode] = useState<SortMode>("time"); // 默认按时间排序
   const [searchQuery, setSearchQuery] = useState<string>(""); // 新增：搜索关键词状态
-
+  const [actress,setActress] = useState<string[]>([])
   const [totalMovies, setTotalMovies] = useState(0); // 总电影数量
+
+  // 新增：选中女优的状态
+  const [selectedActress, setSelectedActress] = useState<string | null>(null);
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false); // 控制视频播放器显示
@@ -99,7 +102,11 @@ const MoviesPage = () => {
       // 直接设置所有电影
       setMovies(data.movies);
       setTotalMovies(data.total);
-      
+      let tmp_act = []
+      for(const _ of data.movies){
+        tmp_act.push(_.actress)
+      }
+      setActress(Array.from(new Set(tmp_act.filter(Boolean) as string[])))
     } catch (e: unknown) {
       devWithTimestamp("Error fetching movies:", e);
       setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
@@ -486,7 +493,28 @@ const MoviesPage = () => {
           </button>
         </div>
       </div>
-
+      <div>
+      {/* 女优按钮显示 */}
+      {actress && actress.map((name, index) => (
+        <button
+          key={index} 
+          className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-white text-black'}`}
+          onClick={() => {
+            if (selectedActress === name) {
+              // 如果点击的是当前已选中的女优，则取消选中并清空搜索
+              setSelectedActress(null);
+              setSearchQuery("");
+            } else {
+              // 否则，选中该女优并设置为搜索关键词
+              setSelectedActress(name);
+              setSearchQuery(name || "");
+            }
+          }} // 点击女优按钮时，将女优名设置为搜索关键词
+        >
+          {name}
+        </button>
+      ))}
+      </div>
       {loading && loadingStartTime && (
         <p className="text-center text-xl mb-4">
           加载中... 已用时: {elapsedLoadingTime} 秒

@@ -32,7 +32,7 @@ export async function GET(
 ) {
   try {
     const { filename } = await params;
-    devWithTimestamp(`[image-serve] 请求图片: ${filename}`);
+    // devWithTimestamp(`[image-serve] 请求图片: ${filename}`);
     
     // 构建文件路径
     const filePath = path.join(CACHE_DIR, filename);
@@ -49,7 +49,7 @@ export async function GET(
     const imageBuffer = await fs.readFile(filePath);
     const extension = path.extname(filename);
     
-    devWithTimestamp(`[image-serve] 成功读取图片: ${filename}, 大小: ${imageBuffer.length} 字节`);
+    // devWithTimestamp(`[image-serve] 成功读取图片: ${filename}, 大小: ${imageBuffer.length} 字节`);
     
     // 返回图片内容
     const headers = new Headers({

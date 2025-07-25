@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { load } from 'cheerio';
+import * as cheerio from 'cheerio';
 import {
   getCachedMovieMetadata,
   updateMovieMetadataCache,
@@ -70,45 +70,30 @@ import { chromium } from 'playwright';
  * @returns 返回包含电影标题、演员和封面URL的对象。
  */
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  let browser;
-  devWithTimestamp(`[fetchCoverUrl] 开始处理番号: ${code}, 目标网站: manko.fun`);
+  devWithTimestamp(`[fetchCoverUrl] 开始处理番号: ${code}, 目标网站: https://www.javbus.com/${code}`);
   try {
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 启动 Playwright...`);
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
-    await context.addInitScript("localStorage.setItem('uiLanguage-1.0.0', 'zh');");
-    const page = await context.newPage();
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] Playwright 启动成功`);
-
-    const searchUrl = `https://manko.fun/searchresult?by=Title&keyword=${code}`;
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 导航到搜索页面: ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 页面加载完成`);
-
-    const firstResultSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > main > div > div> div:nth-child(1)'; 
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 等待第一个搜索结果出现... (选择器: ${firstResultSelector})`);
-    await page.waitForSelector(firstResultSelector, { timeout: 10000 });
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 第一个搜索结果已找到，正在点击...`);
-    await page.click(firstResultSelector);
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 已点击第一个搜索结果，等待导航...`);
-    await page.waitForLoadState('domcontentloaded');
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 详情页面加载完成`);
-
-
-    const coverImageSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > div > div > div.bg-gray-800.rounded-lg.p-4.flex.justify-center > img';
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 等待封面图片出现... (选择器: ${coverImageSelector})`);
-    await page.waitForSelector(coverImageSelector, { timeout: 10000 });
-    let coverUrl = await page.getAttribute(coverImageSelector, 'src');
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 封面图片URL: ${coverUrl}`);
-
-    const titleSelector = '#app > div.min-h-screen.bg-gray-dark.text-white > div > div.mb-6 > div > h1';
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 提取标题... (选择器: ${titleSelector})`);
-    const title = await page.textContent(titleSelector);
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 标题: ${title}`);
+    const res = await axios.get(`https://www.javbus.com/${code}`,{
+      headers: {
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cookie': 'PHPSESSID=9efr2l1jsqsqi3lh04fk6ojp75; existmag=mag',
+        'Referer': 'https://www.javbus.com',
+        'Sec-CH-UA': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+        'X-Requested-With': 'XMLHttpRequest',
+      }
+    })
     
-    const actress = "";
-
-
+    const $ = cheerio.load(res.data)
+    let coverUrl = "https://www.javbus.com"+$("body > div.container > div.row.movie > div.col-md-9.screencap > a > img").attr("src") || ""
+    let title = $("body > div.container > h3").text() || ""
+    let actress = $("body > div.container > div.row.movie > div.col-md-3.info > p:last-child > span > a").text() || ""
     // 5. 处理封面图片代理
     if (coverUrl) {
       devWithTimestamp(`[fetchCoverUrl] [manko.fun] 原始封面URL: ${coverUrl}`);
@@ -124,7 +109,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
             devWithTimestamp(`[fetchCoverUrl] [manko.fun] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`);
           } else {
             devWithTimestamp(`[fetchCoverUrl] [manko.fun] image-proxy 返回占位符或无效图片，保持原始URL: ${coverUrl}`);
-            coverUrl = null;
+            coverUrl = "";
           }
         } else {
           devWithTimestamp(`[fetchCoverUrl] [manko.fun] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`);
@@ -143,67 +128,10 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     } else {
       devWithTimestamp(`[fetchCoverUrl] [manko.fun] 番号 ${code} 处理失败 - 未获取到任何元数据`);
     }
-
     return { coverUrl, title, actress };
-
-  } catch (error) {
-    devWithTimestamp(`[fetchCoverUrl] [manko.fun] 抓取失败 (code: ${code}):`, error);
-    devWithTimestamp(`[fetchCoverUrl] 切换到备用网站: javdb.com`);
-    try {
-      const searchUrl = `https://javdb.com/search?q=${code}&f=all`;
-      devWithTimestamp(`[fetchCoverUrl] [javdb] 搜索URL: ${searchUrl}`);
-      const response = await axios.get(searchUrl);
-      devWithTimestamp(`[fetchCoverUrl] [javdb] 搜索请求状态: ${response.status}`);
-
-      if (response.status === 200) {
-        const html = response.data;
-        const $ = load(html);
-        const movieLink = $('body > section > div > div.movie-list.h.cols-4.vcols-8 > div:nth-child(1) > a').attr('href');
-        
-        if (!movieLink) {
-          devWithTimestamp(`[fetchCoverUrl] [javdb] 在搜索结果中未找到电影链接 (番号: ${code})`);
-          return { title: null, actress: null, coverUrl: null };
-        }
-
-        const movieUrl =`https://javdb.com` + movieLink;
-        devWithTimestamp(`[fetchCoverUrl] [javdb] 电影详情页URL: ${movieUrl}`);
-        const moviepage = await axios.get(movieUrl);
-        devWithTimestamp(`[fetchCoverUrl] [javdb] 详情页请求状态: ${moviepage.status}`);
-
-        if(moviepage.status === 200){
-          const mvhtml = moviepage.data;
-          const $mp = load(mvhtml);
-          const title = $mp("body > section > div > div.video-detail > h2 > strong.current-title").text() || null;
-          const coverUrl = $mp("body > section > div > div.video-detail > div.video-meta-panel > div > div.column.column-video-cover > a > img").attr('src') || null;
-          const actress = ""; // Placeholder, as actress logic is not implemented for javdb
-          
-          devWithTimestamp(`[fetchCoverUrl] [javdb] 提取信息 - 标题: ${title}, 封面: ${coverUrl}`);
-          
-          // Here you might want to use the image proxy as well, similar to the manko.fun logic
-          // For now, just returning the direct URL
-          await updateMovieMetadataCache(code, coverUrl, title, actress);
-          devWithTimestamp(`[fetchCoverUrl] [javdb] 番号 ${code} 处理完成`);
-          return {coverUrl, title, actress};
-        }
-      } 
-      devWithTimestamp(`[fetchCoverUrl] [javdb] 未能成功处理番号: ${code}`);
-      return { title: null, actress: null, coverUrl: null };
-    } catch (fallbackError) {
-      devWithTimestamp(`[fetchCoverUrl] [javdb] 备用网站抓取失败 (code: ${code}):`, fallbackError);
-      return {
-        title: null,
-        actress: null,
-        coverUrl: null,
-      };
-    }
-    
-  } finally {
-    // 确保浏览器在最后总是被关闭
-    if (browser) {
-      devWithTimestamp(`[fetchCoverUrl] 关闭 Playwright 浏览器`);
-      await browser.close();
-    }
-  }
+  } catch  {
+    devWithTimestamp(`[fetchCoverUrl] 处理番号: ${code}, 失败`);
+  } 
 }
 
 /**
@@ -246,7 +174,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 12; // 降低并发数到3，减少被屏蔽风险
+  const concurrencyLimit = 10; // 降低并发数到3，减少被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
   
   // 启动内存监控
@@ -269,12 +197,12 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
         
         // 检查缓存是否完整：所有关键信息都不为null
         const hasCompleteCache = cachedMetadata && 
-          cachedMetadata.coverUrl !== null && 
-          cachedMetadata.title !== null && 
-          cachedMetadata.actress !== null;
-        
+          cachedMetadata.coverUrl !== "" && 
+          cachedMetadata.title !== ""
+
         if (hasCompleteCache) {
           // 缓存完整，直接使用缓存数据
+          // devWithTimestamp("缓存完整，直接使用缓存数据")
           const eloData = cachedMetadata.elo !== undefined ? {
             elo: cachedMetadata.elo,
             matchCount: cachedMetadata.matchCount || 0,
@@ -351,7 +279,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                 try {
                   const result = await retryWithTimeout(
                     () => fetchCoverUrl(movie.code!, baseUrl), // 直接网络请求
-                    1, // 减少重试次数从2次到1次
+                    2, // 减少重试次数从2次到1次
                     10000 // 减少超时时间从5秒到1秒
                   );
                   if (result) {
@@ -458,7 +386,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   devWithTimestamp(`  🌐 网络请求数: ${needsFetchMovies.length}个`);
   
   console.log(
-    "项目路径: https://localhost:3000"
+    "项目路径: http://localhost:3000"
   );
   return processedMovies;
 }
