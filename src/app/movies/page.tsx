@@ -56,13 +56,13 @@ const MoviesPage = () => {
   const [elapsedLoadingTime, setElapsedLoadingTime] = useState<number>(0); // 已用加载时间
   const [sortMode, setSortMode] = useState<SortMode>("time"); // 默认按时间排序
   const [searchQuery, setSearchQuery] = useState<string>(""); // 新增：搜索关键词状态
-  const [actress,setActress] = useState<string[]>([])
+  const [actress,setActress] = useState<{ name: string, count: number }[]>([]);
   const [totalMovies, setTotalMovies] = useState(0); // 总电影数量
 
   // 新增：选中女优的状态
   const [selectedActress, setSelectedActress] = useState<string | null>(null);
   // 新增：电影类别状态
-  const [genres, setGenres] = useState<string[]>([]); 
+  const [genres, setGenres] = useState<{ name: string, count: number }[]>([]); 
   // 新增：选中类别状态
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
 
@@ -112,14 +112,33 @@ const MoviesPage = () => {
       setMovies(data.movies);
       setTotalMovies(data.total);
       
-      let tmp_act: string[] = [];
-      let tmp_kinds: string[] = []; // 临时存储电影类别
-      for(const movie of data.movies){ // 遍历data.movies而不是actress
-        if (movie.actress) tmp_act.push(movie.actress); // 确保actress存在
-        if (movie.kinds) tmp_kinds.push(...movie.kinds); // 确保kinds存在并展开
+      // 统计女优影片数量
+      const actressCounts = new Map<string, number>();
+      // 统计电影类别影片数量
+      const genreCounts = new Map<string, number>();
+
+      for (const movie of data.movies) {
+        if (movie.actress) {
+          actressCounts.set(movie.actress, (actressCounts.get(movie.actress) || 0) + 1);
+        }
+        if (movie.kinds) {
+          for (const kind of movie.kinds) {
+            genreCounts.set(kind, (genreCounts.get(kind) || 0) + 1);
+          }
+        }
       }
-      setActress(Array.from(new Set(tmp_act.filter(Boolean) as string[])));
-      setGenres(Array.from(new Set(tmp_kinds.filter(Boolean) as string[]))); // 设置唯一的电影类别
+
+      // 转换为数组并按数量降序排序
+      const sortedActress = Array.from(actressCounts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+      
+      const sortedGenres = Array.from(genreCounts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+
+      setActress(sortedActress);
+      setGenres(sortedGenres);
 
     } catch (e: unknown) {
       devWithTimestamp("Error fetching movies:", e);
@@ -537,23 +556,23 @@ const MoviesPage = () => {
         </div>
         <div className={`flex flex-wrap items-center -mb-2 ${showActressFilters ? '' : 'overflow-hidden max-h-7'}`}> {/* Content area for buttons, with negative margin to offset mb-2 of buttons */} 
           
-          {actress && actress.map((name, index) => (
+          {actress && actress.map((actressData, index) => (
             <button
               key={`actress-${index}`}
               className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
-                ${selectedActress === name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+                ${selectedActress === actressData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
               onClick={() => {
-                if (selectedActress === name) {
+                if (selectedActress === actressData.name) {
                   setSelectedActress(null);
                   setSearchQuery(""); // 清空搜索
                 } else {
-                  setSelectedActress(name);
+                  setSelectedActress(actressData.name);
                   setSelectedGenre(null); // 选中女优时取消选中类别
-                  setSearchQuery(name || ""); // 将女优名填入搜索框
+                  setSearchQuery(actressData.name || ""); // 将女优名填入搜索框
                 }
               }}
             >
-              {name}
+              {actressData.name} ({actressData.count})
             </button>
           ))}
         </div>
@@ -572,23 +591,23 @@ const MoviesPage = () => {
         </div>
         <div className={`flex flex-wrap items-center -mb-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-7'}`}> {/* Content area for buttons, with negative margin to offset mb-2 of buttons */} 
           
-          {genres && genres.map((genre, index) => (
+          {genres && genres.map((genreData, index) => (
             <button
               key={`genre-${index}`}
               className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 
-                ${selectedGenre === genre ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+                ${selectedGenre === genreData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
               onClick={() => {
-                if (selectedGenre === genre) {
+                if (selectedGenre === genreData.name) {
                   setSelectedGenre(null);
                   setSearchQuery(""); // 清空搜索
                 } else {
-                  setSelectedGenre(genre);
+                  setSelectedGenre(genreData.name);
                   setSelectedActress(null); // 选中类别时取消选中女优
                   setSearchQuery(""); // 类别不直接设置搜索框，只影响过滤
                 }
               }}
             >
-              {genre}
+              {genreData.name} ({genreData.count})
             </button>
           ))}
         </div>
