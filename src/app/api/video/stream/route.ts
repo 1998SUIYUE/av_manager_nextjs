@@ -82,7 +82,14 @@ const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
 export async function GET(
   request: NextRequest
 ) {
-  devWithTimestamp('[video API] Received video stream request.'); // 添加日志
+  const requestStart = Date.now();
+  devWithTimestamp('[video API] 🎬 收到视频流请求'); // 添加日志
+  
+  // 打印请求头信息
+  const userAgent = request.headers.get('user-agent') || 'Unknown';
+  const referer = request.headers.get('referer') || 'Direct';
+  devWithTimestamp(`[video API] 📱 User-Agent: ${userAgent.substring(0, 100)}...`);
+  devWithTimestamp(`[video API] 🔗 Referer: ${referer}`);
   
 
   const streamErrorHandler = (error: Error) => {
@@ -167,23 +174,43 @@ export async function GET(
     
     // 解析 range 请求头
     const range = request.headers.get('range');
-    devWithTimestamp(`[video API] Range header: ${range || 'No Range header'}`);
+    devWithTimestamp(`[video API] 📥 Range header: ${range || 'No Range header'}`);
     
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       
-      // 🚀 优化：如果请求的块太小，扩大到最少50MB，大幅提升预加载效果
-      const minChunkSize = 200 * 1024 * 1024; // 50MB
+      // 🚀 智能优化：控制传输块大小，避免大块请求造成卡顿
+      const requestedSize = end - start + 1;
+      const minChunkSize = 10 * 1024 * 1024; // 10MB 最小块
+      const maxChunkSize = 100 * 1024 * 1024; // 100MB 最大块
+      const maxSingleTransfer = 500 * 1024 * 1024; // 500MB 单次传输上限
       let actualEnd = end;
       
-      if ((end - start + 1) < minChunkSize && end < fileSize - 1) {
-        actualEnd = Math.min(start + minChunkSize - 1, fileSize - 1);
-        devWithTimestamp(`[video API] 🚀 Expanding chunk from ${((end - start + 1) / 1024 / 1024).toFixed(1)}MB to ${((actualEnd - start + 1) / 1024 / 1024).toFixed(1)}MB for better caching`);
+      devWithTimestamp(`[video API] 📊 原始请求: ${start}-${end} (${(requestedSize / 1024 / 1024).toFixed(2)}MB)`);
+      devWithTimestamp(`[video API] 📊 文件总大小: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+      
+      // 限制单次传输的最大数据量
+      if (requestedSize > maxSingleTransfer) {
+        actualEnd = start + maxSingleTransfer - 1;
+        const limitedSize = actualEnd - start + 1;
+        devWithTimestamp(`[video API] ⚠️ 限制大块传输: ${(requestedSize / 1024 / 1024).toFixed(2)}MB → ${(limitedSize / 1024 / 1024).toFixed(2)}MB`);
+        devWithTimestamp(`[video API] ⚠️ 限制后范围: ${start}-${actualEnd}`);
+      }
+      // 对小块请求进行扩展优化
+      else if (requestedSize < minChunkSize && end < fileSize - 1) {
+        actualEnd = Math.min(start + maxChunkSize - 1, fileSize - 1);
+        const actualSize = actualEnd - start + 1;
+        devWithTimestamp(`[video API] 🚀 扩展小块: ${(requestedSize / 1024 / 1024).toFixed(2)}MB → ${(actualSize / 1024 / 1024).toFixed(2)}MB`);
+        devWithTimestamp(`[video API] 🚀 实际返回范围: ${start}-${actualEnd}`);
+      } else {
+        devWithTimestamp(`[video API] ✅ 保持原始范围: ${(requestedSize / 1024 / 1024).toFixed(2)}MB (无需调整)`);
+        devWithTimestamp(`[video API] ✅ 返回范围: ${start}-${end}`);
       }
       
       const chunksize = (actualEnd - start) + 1;
+      devWithTimestamp(`[video API] 📤 最终传输数据量: ${(chunksize / 1024 / 1024).toFixed(2)}MB`);
       const headers = new Headers({
         'Content-Range': `bytes ${start}-${actualEnd}/${fileSize}`,
         'Accept-Ranges': 'bytes',
@@ -204,7 +231,14 @@ export async function GET(
       // 使用安全的 ReadableStream 包装器
       const safeWebStream = createSafeReadableStream(fileStream, `[video API Range ${start}-${end}]`);
 
-      devWithTimestamp(`[video API] Serving partial content: ${absolutePath}, Range: ${start}-${end}`);
+      const responseTime = Date.now() - requestStart;
+      const transferSpeedMBps = (chunksize / 1024 / 1024) / (responseTime / 1000);
+      
+      devWithTimestamp(`[video API] 🚀 返回部分内容: ${path.basename(absolutePath)}`);
+      devWithTimestamp(`[video API] ⏱️ 响应时间: ${responseTime}ms`);
+      devWithTimestamp(`[video API] 🏃 理论传输速度: ${transferSpeedMBps.toFixed(2)}MB/s`);
+      devWithTimestamp(`[video API] 📋 Content-Range: bytes ${start}-${actualEnd}/${fileSize}`);
+      
       return new NextResponse(safeWebStream, { 
         status: 206, 
         headers 
