@@ -1,0 +1,240 @@
+/* eslint-disable @next/next/no-img-element */
+"use client";
+
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import MovieCardLazy from "@/components/MovieCardLazy";
+import { formatFileSize } from "@/utils/formatFileSize";
+import { devWithTimestamp } from "@/utils/logger";
+import VideoPlayer from "@/components/VideoPlayer";
+
+// 安全的Base64编码函数
+function safeBase64Encode(str: string): string {
+  try {
+    return btoa(encodeURIComponent(str));
+  } catch (error) {
+    console.error('Base64编码失败:', error);
+    return encodeURIComponent(str);
+  }
+}
+
+// 基础电影数据接口
+interface BaseMovieData {
+  filename: string;
+  path: string;
+  absolutePath: string;
+  size: number;
+  sizeInGB: number;
+  extension: string;
+  title: string;
+  year?: string;
+  code?: string;
+  modifiedAt: number;
+}
+
+// 定义排序模式的类型
+type SortMode = "time" | "size"; // 初始版本不支持按评分排序
+
+const MoviesLazyPage = () => {
+  const [movies, setMovies] = useState<BaseMovieData[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("time");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [totalMovies, setTotalMovies] = useState(0);
+  const [loadedCount, setLoadedCount] = useState(0);
+
+  // 视频播放相关状态
+  const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
+  const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
+
+  const fetchMovies = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setLoadedCount(0); // Reset counter on fetch
+    try {
+      const apiUrl = `/api/movies-list`;
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      setMovies(data.movies);
+      setTotalMovies(data.total);
+
+    } catch (e: unknown) {
+      devWithTimestamp("Error fetching movies list:", e);
+      setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMovies();
+  }, [fetchMovies]);
+
+  const handleCardLoaded = useCallback(() => {
+    setLoadedCount(prevCount => prevCount + 1);
+  }, []);
+
+  const handleMovieClick = useCallback((absolutePath: string) => {
+    setSelectedVideoPath(absolutePath);
+    setShowVideoPlayer(true);
+  }, []);
+
+  const handleCloseVideoPlayer = useCallback(() => {
+    setSelectedVideoPath(null);
+    setShowVideoPlayer(false);
+  }, []);
+
+  const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
+    if (!filePath || !confirm(`确定要删除电影 "${filename || filePath}" 吗？`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/movies/delete-file", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath: filePath }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "删除文件失败");
+      }
+
+      alert(`电影 "${filename || filePath}" 已成功删除。`);
+      setShowVideoPlayer(false);
+      setMovies(prevMovies => prevMovies.filter(movie => movie.absolutePath !== filePath));
+      setTotalMovies(prevTotal => Math.max(0, prevTotal - 1));
+
+    } catch (error) {
+      devWithTimestamp(`删除电影时发生错误: ${filePath}`, error);
+      alert(error instanceof Error ? error.message : "删除电影时发生错误");
+    }
+  }, []);
+
+  const sortedAndFilteredMovies = useMemo(() => {
+    let currentMovies = [...movies];
+
+    if (searchQuery) {
+      const lowerCaseQuery = searchQuery.toLowerCase();
+      currentMovies = currentMovies.filter(movie => 
+        (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
+      );
+    }
+
+    if (sortMode === "time") {
+      currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    } else if (sortMode === "size") {
+      currentMovies.sort((a, b) => b.size - a.size);
+    }
+    return currentMovies;
+  }, [movies, sortMode, searchQuery]);
+
+  const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-4">
+      <h1 className="text-4xl font-bold text-center mb-8">电影列表 (懒加载)</h1>
+
+      <div className="mb-4 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
+        <div className="relative w-full sm:w-1/2">
+            <input
+              type="text"
+              placeholder="搜索电影 (标题, 番号, 文件名)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full p-2 pr-10 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-white"
+              >
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+        </div>
+
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setSortMode("time")}
+            className={`px-4 py-2 rounded-md ${sortMode === "time" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
+          >
+            按时间排序
+          </button>
+          <button
+            onClick={() => setSortMode("size")}
+            className={`px-4 py-2 rounded-md ${sortMode === "size" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
+          >
+            按大小排序
+          </button>
+        </div>
+      </div>
+
+      {loading && <p className="text-center text-xl mb-4">正在加载电影列表...</p>}
+      {error && <p className="text-center text-red-500 mb-4">错误: {error}</p>}
+
+      <div className="text-center mb-6">
+        <p className="text-lg mb-2 mt-2">总电影数: {totalMovies}</p>
+        {totalToLoad > 0 && loadedCount < totalToLoad && (
+          <p className="text-sm text-yellow-400">正在加载详情: {loadedCount} / {totalToLoad}</p>
+        )}
+        {searchQuery && (
+          <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {sortedAndFilteredMovies.map((movie) => (
+          <MovieCardLazy 
+            key={movie.absolutePath} 
+            movie={movie} 
+            onMovieClick={handleMovieClick}
+            onLoaded={handleCardLoaded}
+          />
+        ))}
+      </div>
+
+      {!loading && movies.length === 0 && !error && (
+        <p className="text-center text-xl mt-8">没有找到电影文件。</p>
+      )}
+
+      {showVideoPlayer && selectedVideoPath && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          onClick={handleCloseVideoPlayer}
+        >
+          <div
+            className="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-7xl h-full flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <VideoPlayer
+              src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
+              filepath={selectedVideoPath}
+              filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
+            />
+            <button
+              onClick={() => handleDeleteMovieClick(selectedVideoPath, movies.find(m => m.absolutePath === selectedVideoPath)?.filename)}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-lg mt-4 self-end"
+              style={{ zIndex: 10 }}
+            >
+              删除电影
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MoviesLazyPage;
