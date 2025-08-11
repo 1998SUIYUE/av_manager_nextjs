@@ -145,8 +145,6 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     );
   }
 
-  const finalDetails = details || movie;
-
   return (
     <div
       className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer"
@@ -154,8 +152,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     >
       <div className="relative overflow-hidden bg-gray-700 min-h-[200px] flex items-center justify-center">
         <img
-          src={finalDetails.coverUrl || "/placeholder-image.svg"}
-          alt={finalDetails.displayTitle || finalDetails.filename}
+          src={details?.coverUrl || "/placeholder-image.svg"}
+          alt={details?.displayTitle || movie.filename}
           className="w-full h-auto object-contain max-h-[400px]"
           onLoad={handleImageLoad}
           onError={(e) => {
@@ -177,46 +175,46 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
       
       <div className="p-3 space-y-2">
         <div className="text-sm font-semibold text-white leading-tight">
-          {finalDetails.displayTitle || finalDetails.filename}
+          {details?.displayTitle || movie.filename}
         </div>
         
         <div className="space-y-1">
-          {finalDetails.code && (
+          {movie.code && (
             <div className="text-xs text-blue-300">
-              <span className="font-medium">番号:</span> {finalDetails.code}
+              <span className="font-medium">番号:</span> {movie.code}
             </div>
           )}
-          {finalDetails.actress && (
+          {details?.actress && (
             <div className="text-xs text-pink-300">
-              <span className="font-medium">女优:</span> {finalDetails.actress}
+              <span className="font-medium">女优:</span> {details.actress}
             </div>
           )}
-          {finalDetails.year && (
+          {movie.year && (
             <div className="text-xs text-green-300">
-              <span className="font-medium">年份:</span> {finalDetails.year}
+              <span className="font-medium">年份:</span> {movie.year}
             </div>
           )}
         </div>
         
-        {finalDetails.elo && finalDetails.elo !== 1000 && (
+        {details?.elo && details.elo !== 1000 && (
           <div className="bg-gray-700 rounded p-2 space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-yellow-300 font-bold">Elo评分: {finalDetails.elo}</span>
-              {finalDetails.winRate !== undefined && (
-                <span className="text-gray-300">胜率: {(finalDetails.winRate * 100).toFixed(1)}%</span>
+              <span className="text-yellow-300 font-bold">Elo评分: {details.elo}</span>
+              {details.winRate !== undefined && (
+                <span className="text-gray-300">胜率: {(details.winRate * 100).toFixed(1)}%</span>
               )}
             </div>
-            {finalDetails.matchCount !== undefined && finalDetails.matchCount > 0 && (
+            {details.matchCount !== undefined && details.matchCount > 0 && (
               <div className="text-xs text-gray-300">
-                对战记录: {finalDetails.winCount || 0}胜 {finalDetails.drawCount || 0}平 {finalDetails.lossCount || 0}负
+                对战记录: {details.winCount || 0}胜 {details.drawCount || 0}平 {details.lossCount || 0}负
               </div>
             )}
           </div>
         )}
         
         <div className="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700">
-          <span>{formatFileSize(finalDetails.size)}</span>
-          <span>{new Date(finalDetails.modifiedAt).toLocaleDateString()}</span>
+          <span>{formatFileSize(movie.size)}</span>
+          <span>{new Date(movie.modifiedAt).toLocaleDateString()}</span>
         </div>
       </div>
     </div>

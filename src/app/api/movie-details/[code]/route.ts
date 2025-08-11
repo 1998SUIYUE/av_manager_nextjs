@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: "Code is required" }, { status: 400 });
     }
 
-    const cachedMetadata = await getCachedMovieMetadata(code, baseUrl);
+    const cachedMetadata = await getCachedMovieMetadata(code);
     if (cachedMetadata && cachedMetadata.title) {
         devWithTimestamp(`[movie-details] 缓存命中: ${code}`);
         return NextResponse.json(cachedMetadata);

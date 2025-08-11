@@ -1,5 +1,5 @@
 {
-  "name": "AV_Manager",
+  "name": "av-manager",
   "version": "0.1.0",
   "private": true,
   "homepage": "./",
@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next build && next start",
     "lint": "next lint",
+    
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:pack": "electron-builder",
     "build:electron": "npm run build && npm run electron:pack",

@@ -250,6 +250,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [bufferedRanges, setBufferedRanges] = useState<{start: number, end: number}[]>([]);
   const [showBufferInfo, setShowBufferInfo] = useState(false);
+  const [forwardStep, setForwardStep] = useState(forwardSeconds); // New state for dynamic forward time
+  const [, forceUpdate] = useState(0); // Dummy state to force re-renders
   
   // 添加显示/隐藏技术信息的切换函数
   const toggleTechInfo = useCallback(() => {
@@ -282,31 +284,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsLoading(true);
     if (onLoadStart) onLoadStart();
   }, [onLoadStart]);
-
-  const handleCanPlay = useCallback(() => {
-    setIsLoading(false);
-    if (onCanPlay) onCanPlay();
-    
-    // 视频可以播放时，尝试获取视频信息
-    updateVideoTechInfo();
-    
-    // 检测编解码器
-    detectCodec(src).then(codecInfo => {
-      setTechInfo(prev => ({
-        ...prev,
-        codec: codecInfo
-      }));
-    });
-    
-    // 检测硬件加速
-    const hwAccel = isHardwareAccelerated();
-    setTechInfo(prev => ({ 
-      ...prev, 
-      hardwareAcceleration: hwAccel,
-      renderMode: hwAccel ? "GPU 加速" : "软件渲染"
-    }));
-    
-  }, [onCanPlay, src]);
 
   // 更新视频技术信息
   const updateVideoTechInfo = useCallback(() => {
@@ -400,6 +377,22 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, []);
 
+  const handleCanPlay = useCallback(() => {
+    setIsLoading(false);
+    if (onCanPlay) onCanPlay();
+    updateVideoTechInfo();
+    detectCodec(src).then(codecInfo => {
+      setTechInfo(prev => ({ ...prev, codec: codecInfo }));
+    });
+    const hwAccel = isHardwareAccelerated();
+    setTechInfo(prev => ({ ...prev, hardwareAcceleration: hwAccel, renderMode: hwAccel ? "GPU 加速" : "软件渲染" }));
+  }, [onCanPlay, src, updateVideoTechInfo]);
+
+  const handleInteraction = useCallback(() => {
+    // Per user's request, simulate clicking the 10s button to restore hotkey state.
+    setForwardStep(10);
+  }, []);
+
   const handleProgress = useCallback(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -469,7 +462,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       { name: "loadstart", handler: handleLoadStart },
       { name: "canplay", handler: handleCanPlay },
       { name: "progress", handler: handleProgress },
-      { name: "timeupdate", handler: updateVideoTechInfo }, // 添加时间更新时的技术信息更新
+      { name: "timeupdate", handler: updateVideoTechInfo },
+      { name: "play", handler: handleInteraction },
+      { name: "pause", handler: handleInteraction },
+      { name: "seeked", handler: handleInteraction },
     ];
 
     events.forEach((event) => {
@@ -492,6 +488,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleCanPlay,
     handleProgress,
     updateVideoTechInfo,
+    handleInteraction,
   ]);
 
   // 添加键盘事件处理
@@ -500,19 +497,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const videoElement = videoRef.current;
       if (!videoElement) return;
 
+      // 当焦点在输入框等元素时，不触发快捷键
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       // 右键快进
       if (e.key === "ArrowRight") {
-        e.preventDefault(); // 阻止默认行为
-        const currentTime = videoElement.currentTime;
+        e.preventDefault();
+        devWithTimestamp(`[VideoPlayer Hotkey] Fast-forwarding by: ${forwardStep} seconds`);
         videoElement.currentTime = Math.min(
-          currentTime + forwardSeconds,
+          videoElement.currentTime + forwardStep,
           videoElement.duration
         );
       } else if (e.key === "ArrowLeft") {
         // 添加左键快退
         e.preventDefault();
-        const currentTime = videoElement.currentTime;
-        videoElement.currentTime = Math.max(currentTime - forwardSeconds, 0);
+        videoElement.currentTime = Math.max(videoElement.currentTime - forwardStep, 0);
       } else if (e.key === " ") {
         // 空格键暂停/播放
         e.preventDefault();
@@ -534,11 +535,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
 
+    // Listener 1: Global listener for general use
     document.addEventListener("keydown", handleKeyDown);
+    
+    // Listener 2: Local listener on the video element for when it has focus
+    const videoElement = videoRef.current;
+    videoElement?.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      videoElement?.removeEventListener("keydown", handleKeyDown);
     };
-  }, [forwardSeconds, toggleTechInfo]);
+  }, [forwardStep, toggleTechInfo]);
+
+  
 
   const openInExplorer = async () => {
     try {
@@ -673,10 +683,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         controls={controls}
         autoPlay={autoPlay}
         muted={muted}
-        className="w-full h-full bg-black object-contain"
+        className="w-full h-full bg-black object-contain outline-none" // Add outline-none to hide focus ring
         style={{ maxWidth: "100%", maxHeight: "100%" }}
         crossOrigin="anonymous"
         playsInline // 移动设备内联播放
+        tabIndex={-1} // Make video element focusable
         // 🚀 优化缓存设置
         
         // 增加缓冲区大小提示
@@ -701,6 +712,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {BufferDisplay}
       {LoadingIndicator}
       {ErrorDisplay}
+
+      {/* Forward Step Controls */}
+      <div className="absolute bottom-16 right-2 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
+        <button 
+          onClick={(e) => { e.stopPropagation(); setForwardStep(5); }}
+          className={`px-3 py-1 text-xs font-semibold rounded ${forwardStep === 5 ? 'bg-blue-600 text-white' : 'bg-black bg-opacity-50 text-white'}`}>
+            5s
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setForwardStep(10); }}
+          className={`px-3 py-1 text-xs font-semibold rounded ${forwardStep === 10 ? 'bg-blue-600 text-white' : 'bg-black bg-opacity-50 text-white'}`}>
+            10s
+        </button>
+      </div>
     </div>
   );
 };

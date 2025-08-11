@@ -771,8 +771,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
     if (movie.code) {
       try {
         const cachedMetadata = await getCachedMovieMetadata(
-          movie.code,
-          baseUrl
+          movie.code
         );
 
         // 检查缓存是否完整：所有关键信息都不为null
@@ -893,8 +892,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                   // 网络请求完成后，从缓存中获取评分数据（因为updateMovieMetadataCache可能包含评分信息）
                   try {
                     const updatedCachedMetadata = await getCachedMovieMetadata(
-                      movie.code!,
-                      baseUrl
+                      movie.code!
                     );
                     if (
                       updatedCachedMetadata &&

@@ -75,7 +75,7 @@ function calculateEloChange(
  * @returns Elo评分数据
  */
 async function getEloRatingData(code: string, baseUrl: string): Promise<EloRatingData> {
-  const metadata = await getCachedMovieMetadata(code, baseUrl);
+  const metadata = await getCachedMovieMetadata(code);
   
   return {
     elo: metadata?.elo || 1000,
@@ -104,8 +104,8 @@ async function updateRatingsAsync(
   try {
     // 获取影片A和B的最新完整元数据，以保留非Elo相关信息
     const [currentMetadataA, currentMetadataB] = await Promise.all([
-      getCachedMovieMetadata(movieACode, baseUrl),
-      getCachedMovieMetadata(movieBCode, baseUrl)
+      getCachedMovieMetadata(movieACode),
+      getCachedMovieMetadata(movieBCode)
     ]);
 
     // 更新影片A的数据

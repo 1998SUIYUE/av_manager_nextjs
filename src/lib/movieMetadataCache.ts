@@ -136,16 +136,23 @@ export async function updateMovieMetadataCache(
   eloData?: Partial<MovieMetadata>
 ) {
     const cache = await getMemoryCache();
-    const existing = cache.get(code) || { code, elo: 1000 }; // Provide default elo for new entries
+    const existing = cache.get(code);
 
     const updatedEntry: MovieMetadata = {
-        ...existing,
-        coverUrl: coverUrl !== undefined ? coverUrl : existing.coverUrl,
-        title: title !== undefined ? title : existing.title,
-        actress: actress !== undefined ? actress : existing.actress,
-        kinds: kinds !== undefined ? kinds : existing.kinds,
-        lastUpdated: Date.now(),
-        ...(eloData || {}),
+      code: code,
+      lastUpdated: Date.now(),
+      // Give precedence to new data, then existing data, then a default.
+      coverUrl: coverUrl !== undefined ? coverUrl : existing?.coverUrl || null,
+      title: title !== undefined ? title : existing?.title || null,
+      actress: actress !== undefined ? actress : existing?.actress || null,
+      kinds: kinds != null ? kinds : (existing?.kinds || undefined),
+      elo: eloData?.elo !== undefined ? eloData.elo : existing?.elo || 1000,
+      matchCount: eloData?.matchCount !== undefined ? eloData.matchCount : existing?.matchCount || 0,
+      winCount: eloData?.winCount !== undefined ? eloData.winCount : existing?.winCount || 0,
+      drawCount: eloData?.drawCount !== undefined ? eloData.drawCount : existing?.drawCount || 0,
+      lossCount: eloData?.lossCount !== undefined ? eloData.lossCount : existing?.lossCount || 0,
+      lastRated: eloData?.lastRated !== undefined ? eloData.lastRated : existing?.lastRated,
+      recentMatches: eloData?.recentMatches !== undefined ? eloData.recentMatches : existing?.recentMatches || [],
     };
 
     cache.set(code, updatedEntry);
