@@ -103,7 +103,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
       },
-      timeout: 3000, // 增加超时时间到15秒
+      timeout: 15000, // 增加超时时间到15秒
       httpsAgent: AGENT, // 添加代理配置
       httpAgent: AGENT, // 也为http请求添加代理
     });
@@ -133,7 +133,7 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
       },
-      timeout: 3000, // 增加超时时间到15秒
+      timeout: 15000, // 增加超时时间到15秒
       httpsAgent: AGENT, // 添加代理配置
       httpAgent: AGENT, // 也为http请求添加代理
     });
@@ -426,7 +426,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
                   const result = await retryWithTimeout(
                     () => fetchCoverUrl(movie.code!, baseUrl), // 直接网络请求
                     1, // 减少重试次数从2次到1次
-                    3000 // 减少超时时间从5秒到1秒
+                    30000 // 减少超时时间从5秒到1秒
                   );
                   if (result) {
                     coverUrl = result.coverUrl;
