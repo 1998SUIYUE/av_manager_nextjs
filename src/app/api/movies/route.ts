@@ -23,6 +23,328 @@ const SCRAPE_DELAY_MS = 0; // 0秒延迟
 const PROXY_URL = "http://127.0.0.1:9890";
 const AGENT = new HttpsProxyAgent(PROXY_URL);
 
+// =============== DMM 抓取所需常量与辅助函数（从 scraper 对齐） ===============
+const DMM_SEARCH_TEMPLATE =
+  "https://www.dmm.co.jp/mono/dvd/-/search/=/searchstr={code}/";
+
+const DEFAULT_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+  Connection: "keep-alive",
+  Referer: "https://www.dmm.co.jp/",
+  "Upgrade-Insecure-Requests": "1",
+  "sec-ch-ua": '"Google Chrome";v="123", "Chromium";v="123", "Not/A)Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "Accept-Encoding": "gzip, deflate, br",
+};
+
+const DEFAULT_COOKIES: Record<string, string> = {
+  age_check_done: "1",
+  ckcy: "1",
+  is_adult: "1",
+};
+
+function cookieHeaderFromObject(obj: Record<string, string>): string {
+  return Object.entries(obj)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
+// 日->中 “ジャンル”映射（完整从 scraper.py 迁移）
+const GENRE_JA_TO_ZH: Record<string, string> = {
+  "3P・4P": "3P/4P",
+  "M女": "M女人",
+  "OL": "办公室女郎",
+  "SF": "科幻小说",
+  "SM": "SM",
+  "Vシネマ": "V-影院",
+  "おもちゃ": "玩具",
+  "お姉さん": "姐姐",
+  "お姫様": "公主",
+  "お嬢様・令嬢": "年轻女士",
+  "お風呂": "洗澡",
+  "くすぐり": "搔痒",
+  "くノ一": "女忍者",
+  "ごっくん": "Gulp",
+  "ふたなり": "双成",
+  "ぶっかけ": "群交",
+  "めがね": "眼镜",
+  "アイドル・芸能人": "偶像和名人",
+  "アクション・格闘": "动作",
+  "アクメ・オーガズム": "性高潮",
+  "アスリート": "运动员",
+  "アナル": "肛门",
+  "アナルセックス": "肛交",
+  "イタズラ": "恶作剧",
+  "イラマチオ": "深喉咙",
+  "インストラクター": "讲师",
+  "ウェイトレス": "女服务员",
+  "エステ": "美容院",
+  "オタク": "御宅族",
+  "オナニー": "手淫",
+  "カップル": "夫妻",
+  "カーセックス": "车内性爱",
+  "キス・接吻": "吻",
+  "キャバ嬢・風俗嬢": "女招待/妓女",
+  "キャンギャル": "竞选女孩",
+  "ギャグ・コメディ": "搞笑喜剧",
+  "クンニ": "舔阴",
+  "ゲロ": "呕吐",
+  "コスプレ": "角色扮演",
+  "コンパニオン": "伴侣",
+  "ゴスロリ": "哥特洛丽塔",
+  "サイコ・スリラー": "心理惊悚片",
+  "シスター": "姐姐",
+  "シックスナイン": "69",
+  "スカトロ": "粪便",
+  "スチュワーデス": "空中小姐",
+  "スパンキング": "打屁股",
+  "スレンダー": "苗条",
+  "スワッピング・夫婦交換": "交换妻子",
+  "セクシー": "性感",
+  "セレブ": "名人",
+  "セーラー服": "水手服",
+  "ダンス": "舞蹈",
+  "チアガール": "啦啦队长",
+  "チャイナドレス": "中式礼服",
+  "ツンデレ": "傲娇",
+  "ディルド": "假阳具",
+  "デカチン・巨根": "大屌/巨屌",
+  "デビュー作品": "处女作",
+
+  "ドキュメンタリー": "记录",
+
+  "ドラマ": "戏剧",
+  "ドール": "玩具娃娃",
+  "ナンパ": "搭讪女孩",
+
+  "ニーソックス": "及膝袜",
+  "ネコミミ・獣系": "猫耳朵/动物",
+  "ノーパン": "不穿内衣",
+  "ノーブラ": "不戴胸罩",
+  "ハーレム": "后宫",
+  "バイブ": "振动器",
+  "バスガイド": "巴士指南",
+  "バニーガール": "兔女郎",
+  "パイズリ": "乳交",
+  "パンスト・タイツ": "连裤袜和紧身裤",
+  "パンチラ": "内裤拍摄",
+  "ビジネススーツ": "商务套装",
+  "ビッチ": "贱人",
+  "ファンタジー": "幻想",
+  "フェラ": "口交",
+
+  "ホテル": "酒店",
+
+  "ボディコン": "紧身连衣裙",
+  "ボンテージ": "束缚",
+  "ミニスカ": "超短裙",
+  "ミニスカポリス": "迷你裙警察",
+  "ミニ系": "迷你系列",
+  "メイド": "女佣",
+  "ランジェリー": "内衣",
+  "ルーズソックス": "宽松的袜子",
+  "レオタード": "紧身衣",
+  "レースクィーン": "赛车皇后",
+  "ローション・オイル": "乳液和油",
+  "不倫": "通奸",
+  "中出し": "中出",
+  "主観": "主观",
+  "乱交": "狂欢",
+  "人妻・主婦": "已婚女性/家庭主妇",
+  "企画": "计划",
+  "体操着・ブルマ": "运动服和灯笼裤",
+  "処女": "处女",
+  "制服": "制服",
+  "即ハメ": "即时性爱",
+  "受付嬢": "接待员",
+  "和服・浴衣": "日式服装和浴衣",
+  "変身ヒロイン": "变身女主角",
+  "女上司": "女老板",
+
+  "女医": "女医生",
+  "女子アナ": "女播音员",
+  "女子大生": "女大学生",
+  "女子校生": "女学生",
+  "女将・女主人": "房东/女主人",
+  "女戦士": "女战士",
+  "女捜査官": "女调查员",
+  "女教師": "女教师",
+  "女王様": "女王",
+
+  "妄想": "妄想",
+  "妊婦": "孕妇",
+  "姉・妹": "姐姐/妹妹",
+  "娘・養女": "女儿/养女",
+  "孕ませ": "浸渍",
+  "学園もの": "学校主题",
+  "学生服": "校服",
+  "家庭教師": "导师",
+  "寝取り・寝取られ・NTR": "NTR",
+  "小柄": "娇小",
+  "尻フェチ": "臀部恋物癖",
+  "局部アップ": "私密部位特写",
+  "巨乳": "大乳房",
+  "巨乳フェチ": "巨乳癖",
+  "巨尻": "大屁股",
+  "巫女": "巫女",
+  "幼なじみ": "儿时的朋友",
+  "復刻": "重印",
+  "恋愛": "恋情",
+  "手コキ": "手淫",
+  "拘束": "克制",
+  "拷問": "酷刑",
+  "指マン": "指法",
+  "放尿・お漏らし": "排尿/小便",
+  "放置": "弃置",
+  "旅行": "旅行",
+  "日焼け": "晒斑",
+  "早漏": "早泄",
+
+  "時間停止": "时间停止",
+  "未亡人": "寡妇",
+  "格闘家": "战斗机",
+  "極道・任侠": "黑帮/骑士精神",
+  "残虐表現": "暴力",
+  "母乳": "母乳",
+  "水着": "泳装",
+  "汗だく": "出汗",
+  "浣腸": "灌肠剂",
+  "淫乱・ハード系": "淫秽",
+  "淫語": "脏话",
+  "温泉": "温泉",
+  "潮吹き": "喷出",
+  "熟女": "成熟的女人",
+  "男の潮吹き": "男性潮吹",
+  "異物挿入": "异物插入",
+  "病院・クリニック": "医院和诊所",
+  "痴女": "荡妇",
+  "白目・失神": "眼白/昏厥",
+  "盗撮・のぞき": "偷窥癖",
+  "監禁": "监禁",
+  "看護婦・ナース": "护士",
+  "着エロ": "情趣服装",
+  "秘書": "秘书",
+  "童貞": "处女",
+  "競泳・スクール水着": "竞技泳衣和学校泳衣",
+  "筋肉": "肌肉",
+  "素人": "素人",
+  "縛り・緊縛": "束缚",
+  "罵倒": "侮辱",
+  "美乳": "美乳",
+  "美少女": "美少女",
+  "羞恥": "耻辱",
+  "義母": "岳母",
+
+
+  "脚フェチ": "恋腿癖",
+  "脱糞": "排便",
+  "花嫁": "新娘",
+  "若妻・幼妻": "年轻的妻子/年轻的妻子",
+  "蝋燭": "蜡烛",
+  "裸エプロン": "裸体围裙",
+  "覆面・マスク": "面具",
+  "触手": "触手",
+  "貧乳・微乳": "貧乳",
+  "超乳": "巨乳",
+  "足コキ": "足交",
+  "軟体": "软体动物",
+  "辱め": "屈辱",
+  "近親相姦": "乱伦",
+  "逆ナン": "反向拾取",
+  "部下・同僚": "下属和同事",
+  "部活・マネージャー": "俱乐部/经理",
+  "野外・露出": "户外/暴露",
+  "長身": "長身",
+  "電マ": "电动按摩器",
+  "顔射": "顔射",
+  "顔面騎乗": "颜面骑乘",
+  "飲尿": "喝尿",
+  "騎乗位": "騎乗位",
+  "鬼畜": "鬼畜",
+  "魔法少女": "魔法少女",
+  "黒人男優": "黑人男演员",
+  "鼻フック": "鼻钩",
+}
+function normalizeGenreKey(s: string): string {
+  return (s || "")
+    .trim()
+    .replace(/\u3000/g, "") // 去除全角空格
+    .replace(/\s+/g, "") // 去除所有半角空白
+    .replace(/[\(\)]/g, (m) => (m === '(' ? '（' : '）')) // 半角括号 -> 全角括号
+    .replace(/[･]/g, "・") // 半角中点 -> 全角中点
+    .replace(/[：:]/g, ":"); // 统一冒号
+}
+
+const GENRE_JA_TO_ZH_NORMALIZED: Record<string, string> = Object.fromEntries(
+  Object.entries(GENRE_JA_TO_ZH).map(([k, v]) => [normalizeGenreKey(k), v])
+);
+
+function translateGenresToZh(genres: string[]): string[] {
+  const mapped = genres
+    .map((g) => GENRE_JA_TO_ZH_NORMALIZED[normalizeGenreKey(g)])
+    .filter((v): v is string => Boolean(v)); // 仅保留有映射的条目
+  // 去重，保持顺序
+  const seen = new Set<string>();
+  return mapped.filter((c) => (seen.has(c) ? false : (seen.add(c), true)));
+}
+
+function makeSearchUrl(code: string): string {
+  return DMM_SEARCH_TEMPLATE.replace(
+    "{code}",
+    String(code || "").trim().replace(/\s+/g, "")
+  );
+}
+
+function absUrl(u: string, base: string): string {
+  try {
+    return new URL(u, base).toString();
+  } catch {
+    return u || "";
+  }
+}
+
+function pickCover(urls: string[]): string {
+  if (!urls || urls.length === 0) return "";
+  const pref1 = urls.find(
+    (u) => /[\\\/]pl\./.test(u) || /[_-]pl\./.test(u) || u.endsWith("pl.jpg") || u.endsWith("pl.png")
+  );
+  if (pref1) return pref1;
+  const pref2 = urls.find(
+    (u) => /[\\\/]ps\./.test(u) || /[_-]ps\./.test(u) || u.endsWith("ps.jpg") || u.endsWith("ps.png")
+  );
+  if (pref2) return pref2;
+  const pref3 = urls.find(
+    (u) => !u.toLowerCase().endsWith(".gif") && !/loading/i.test(u)
+  );
+  if (pref3) return pref3;
+  return urls[0];
+}
+
+function isAdultGateHtml(html: string): boolean {
+  const low = (html || "").toLowerCase();
+  return (
+    low.includes("adult") ||
+    low.includes("r18") ||
+    low.includes("年齢確認") ||
+    low.includes("このサイトはアダルト")
+  );
+}
+
+function getFirstDetailLink($: cheerio.CheerioAPI, base: string): string {
+  let a = $("#list > li:nth-child(1) > div > p.tmb > a");
+  if (!a || a.length === 0) a = $("#list li div p.tmb a").first();
+  if (!a || a.length === 0) a = $("p.tmb a").first();
+  const href = a && a.attr("href");
+  if (!href) return "";
+  return absUrl(href.trim(), base);
+}
+
+
 // 定义电影文件接口
 interface MovieFile {
   filename: string;
@@ -72,178 +394,147 @@ function parseMovieFilename(filename: string): {
 }
 
 /**
- * 使用 Playwright 抓取电影封面和元数据。
- * @param code - 用于搜索的电影代码或关键字。
- * @returns 返回包含电影标题、演员和封面URL的对象。
+ * 使用 DMM 抓取电影封面和元数据（对齐 scraper 逻辑）。
+ * @param code - 番号/关键字
+ * @returns { coverUrl, title, actress, kinds }
  */
 async function fetchCoverUrl(code: string, baseUrl: string) {
-  prodWithTimestamp(
-    `[fetchCoverUrl] 开始处理番号: ${code}, 目标网站: https://www.javbus.com/${code}`
-  );
+  prodWithTimestamp(`[fetchCoverUrl] [DMM] 开始处理番号: ${code}`);
   try {
-    const res = await axios.get(`https://www.javbus.com/search/${code}`, {
-      headers: {
-        accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "cache-control": "max-age=0",
-        cookie: "existmag=mag",
-        priority: "u=0, i",
-        referer: "https://www.javbus.com/",
-        "sec-ch-ua":
-          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-      },
-      timeout: 15000, // 增加超时时间到15秒
-      httpsAgent: AGENT, // 添加代理配置
-      httpAgent: AGENT, // 也为http请求添加代理
+    const searchUrl = makeSearchUrl(code);
+    const headers = { ...DEFAULT_HEADERS, Cookie: cookieHeaderFromObject(DEFAULT_COOKIES) };
+
+    // 1) 搜索页
+    const res = await axios.get(searchUrl, {
+      headers,
+      timeout: 15000,
+      httpsAgent: AGENT,
+      httpAgent: AGENT,
+      maxRedirects: 5,
+      validateStatus: (s) => s >= 200 && s < 400,
     });
+    const html = res.data || "";
+    if (isAdultGateHtml(html)) {
+      devWithTimestamp(`[fetchCoverUrl] [DMM] 搜索页可能命中成年确认页，需要更好的 Cookie 或代理`);
+    }
 
-    const $0 = cheerio.load(res.data);
-    const nexturl = $0("#waterfall > div > a").attr('href') || ""
-    // console.log("获取的网站数据为",res.data)
-    const res1 = await axios.get(nexturl, {
-      headers: {
-        accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "cache-control": "max-age=0",
-        cookie: "existmag=mag",
-        priority: "u=0, i",
-        referer: "https://www.javbus.com/",
-        "sec-ch-ua":
-          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-      },
-      timeout: 15000, // 增加超时时间到15秒
-      httpsAgent: AGENT, // 添加代理配置
-      httpAgent: AGENT, // 也为http请求添加代理
+    const $ = cheerio.load(html);
+    const detailUrl = getFirstDetailLink($, searchUrl);
+    if (!detailUrl) {
+      prodWithTimestamp(`[fetchCoverUrl] [DMM] 未找到详情链接: ${code}`);
+      return { coverUrl: null, title: null, actress: null, kinds: [] };
+    }
+
+    // 2) 详情页
+    const resDetail = await axios.get(detailUrl, {
+      headers,
+      timeout: 15000,
+      httpsAgent: AGENT,
+      httpAgent: AGENT,
+      maxRedirects: 5,
+      validateStatus: (s) => s >= 200 && s < 400,
     });
-    const $ = cheerio.load(res1.data);
-    let coverUrl =
-      "https://www.javbus.com" +
-        $(
-          "body > div.container > div.row.movie > div.col-md-9.screencap > a > img"
-        ).attr("src") || "";
-    let title = $("body > div.container > h3").text() || "";
-    let actress =
-      $(
-        "body > div.container > div.row.movie > div.col-md-3.info > p:last-child > span > a"
-      ).text() || "";
-    let blocked = [
-      "高畫質",
-      "DMM獨家",
-      "單體作品",
-      "數位馬賽克",
-      "多選提交",
-      "4K",
-      "フルハイビジョン(FHD)",
-      "MGSだけのおまけ映像付き",
-      "アクメ・オーガズム",
-    ]; // 将blocked声明提前
+    const dhtml = resDetail.data || "";
+    if (isAdultGateHtml(dhtml)) {
+      devWithTimestamp(`[fetchCoverUrl] [DMM] 详情页可能命中成年确认页`);
+    }
 
-    let kinds_index = $(
-      "body > div.container > div.row.movie > div.col-md-3.info > p.header"
-    );
-    let kinds = kinds_index
-      .next("p")
-      .text()
-      .trim()
-      .split(/\s+/) // 用正则分隔多个空格、换行
-      .map((tag) => tag.trim()) // 去掉 tag 前后空白
-      .filter(
-        (tag) => tag && !blocked.includes(tag) && !/[\u30A0-\u30FF]/.test(tag)
-      ); // 非空 且不在黑名单，且不包含片假名
+    const d$ = cheerio.load(dhtml);
 
-    // 5. 处理封面图片代理
-    if (coverUrl) {
-      devWithTimestamp(`[fetchCoverUrl] [manko.fun] 原始封面URL: ${coverUrl}`);
-      try {
-        const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(
-          coverUrl
-        )}&code=${encodeURIComponent(code)}`;
-        devWithTimestamp(
-          `[fetchCoverUrl] [manko.fun] 调用 image-proxy: ${proxyApiUrl}`
-        );
-        const imageProxyResponse = await fetch(proxyApiUrl);
-        if (imageProxyResponse.ok) {
-          const proxyData = await imageProxyResponse.json();
-          devWithTimestamp(
-            `[fetchCoverUrl] [manko.fun] image-proxy 响应: ${JSON.stringify(
-              proxyData
-            )}`
-          );
-          if (
-            proxyData.imageUrl &&
-            !proxyData.imageUrl.includes("placeholder-image.svg")
-          ) {
-            coverUrl = proxyData.imageUrl; // 更新为本地代理URL
-            devWithTimestamp(
-              `[fetchCoverUrl] [manko.fun] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`
-            );
-          } else {
-            devWithTimestamp(
-              `[fetchCoverUrl] [manko.fun] image-proxy 返回占位符或无效图片，保持原始URL: ${coverUrl}`
-            );
-            coverUrl = "";
-          }
-        } else {
-          devWithTimestamp(
-            `[fetchCoverUrl] [manko.fun] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`
-          );
-        }
-      } catch (proxyError) {
-        devWithTimestamp(
-          `[fetchCoverUrl] [manko.fun] 调用 image-proxy 发生错误: ${proxyError}`
-        );
+    // 标题与女优
+    const title = (d$("#title").text() || "").trim();
+    const actress = (d$("#performer").text() || "").trim();
+
+    // ジャンル -> kinds（中文）
+    let kinds: string[] = [];
+    const tds = d$("td.nw");
+    let labelTd: any | null = null;
+    tds.each((i, el) => {
+      const txt = d$(el).text().trim().replace("：", ":");
+      if (txt.includes("ジャンル")) {
+        labelTd = el as any;
+        return false;
+      }
+    });
+    if (labelTd) {
+      const valueTd = d$(labelTd).next("td");
+      if (valueTd && valueTd.length > 0) {
+        const raw = valueTd
+          .find("a")
+          .map((i, a) => d$(a).text().trim())
+          .get();
+        const dedup = Array.from(new Set(raw.filter(Boolean)));
+        kinds = translateGenresToZh(dedup);
       }
     }
 
-    // 6. 更新缓存并返回结果
-    if (coverUrl || title || actress) {
-      const finalCoverUrl =
-        coverUrl && !coverUrl.includes("placeholder-image.svg")
-          ? coverUrl
-          : null;
-      prodWithTimestamp(
-        `[fetchCoverUrl] [manko.fun] 番号 ${code} 处理完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}`
-      );
-      await updateMovieMetadataCache(
-        code,
-        finalCoverUrl,
-        title,
-        actress,
-        kinds // 将kinds传递给缓存更新函数
-      );
-      return { coverUrl: finalCoverUrl, title, actress, kinds }; // 确保返回kinds
-    } else {
-      prodWithTimestamp(
-        `[fetchCoverUrl] [manko.fun] 番号 ${code} 处理失败 - 未获取到任何元数据`
-      );
+    // 封面候选
+    const coverCandidates: string[] = [];
+    const metaOg = d$('meta[property="og:image"]').attr('content');
+    if (metaOg) coverCandidates.push(absUrl(metaOg.trim(), detailUrl));
+
+    const coverEl = d$("#fn-modalSampleImage__image");
+    if (coverEl && coverEl.length) {
+      const attrs = ["data-src", "data-original", "data-lazy", "data-srcset", "src"] as const;
+      for (const attr of attrs) {
+        const val = coverEl.attr(attr);
+        if (val) {
+          let v = val.trim();
+          if (attr === "data-srcset") v = v.split(/\s+/)[0].replace(/,+$/, "");
+          coverCandidates.push(absUrl(v, detailUrl));
+        }
+      }
+      const parentA = coverEl.parent("a");
+      if (parentA && parentA.length) {
+        const href = parentA.attr("href");
+        if (href) coverCandidates.push(absUrl(href.trim(), detailUrl));
+      }
     }
 
-    return { coverUrl, title, actress, kinds }; // 确保在未获取到任何元数据时也返回kinds
+    d$("img").each((i, img) => {
+      const attrs = ["data-src", "data-original", "src"] as const;
+      for (const attr of attrs) {
+        const val = d$(img).attr(attr);
+        if (!val) continue;
+        const low = val.toLowerCase();
+        if ((low.includes("pics.dmm.co.jp") || low.includes("p.dmm.co.jp")) &&
+            (low.includes("/mono/movie/") || low.includes("/digital/")) &&
+            !(low.includes("loading") && low.endsWith(".gif"))) {
+          coverCandidates.push(absUrl(val.trim(), detailUrl));
+        }
+      }
+    });
+
+    const uniq = Array.from(new Set(coverCandidates.filter(Boolean)));
+    let coverUrl = pickCover(uniq);
+
+    // 处理封面图片代理
+    if (coverUrl) {
+      try {
+        const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(coverUrl)}&code=${encodeURIComponent(code)}`;
+        const imageProxyResponse = await fetch(proxyApiUrl);
+        if (imageProxyResponse.ok) {
+          const proxyData = await imageProxyResponse.json();
+          if (proxyData.imageUrl && !proxyData.imageUrl.includes("placeholder-image.svg")) {
+            coverUrl = proxyData.imageUrl;
+          }
+        }
+      } catch (proxyError) {
+        devWithTimestamp(`[fetchCoverUrl] [DMM] 调用 image-proxy 发生错误: ${proxyError}`);
+      }
+    }
+
+    const finalCoverUrl = coverUrl && !coverUrl.includes("placeholder-image.svg") ? coverUrl : null;
+
+    // 更新缓存并返回
+    await updateMovieMetadataCache(code, finalCoverUrl, title || null, actress || null, kinds);
+    prodWithTimestamp(
+      `[fetchCoverUrl] [DMM] 番号 ${code} 完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}, 标签数: ${kinds.length}`
+    );
+    return { coverUrl: finalCoverUrl, title, actress, kinds };
   } catch (e) {
-    prodWithTimestamp(`[fetchCoverUrl] 处理番号: ${code}, 失败${e}`);
-    return { coverUrl: null, title: null, actress: null, kinds: [] }; // 异常情况下也返回完整结构
+    prodWithTimestamp(`[fetchCoverUrl] [DMM] 处理番号 ${code} 失败: ${e}`);
+    return { coverUrl: null, title: null, actress: null, kinds: [] };
   }
 }
 
@@ -297,7 +588,7 @@ async function processMovieFiles(movieFiles: MovieFile[], baseUrl: string) {
   }
 
   // 使用信号量 (Semaphore) 控制并发的网络请求数量，避免同时发送过多请求
-  const concurrencyLimit = 3; // 降低并发数到3，减少被屏蔽风险
+  const concurrencyLimit = 50; // 降低并发数到3，减少被屏蔽风险
   const semaphore = new Semaphore(concurrencyLimit);
 
   // 启动内存监控
