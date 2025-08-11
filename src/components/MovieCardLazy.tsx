@@ -38,20 +38,32 @@ interface MovieCardLazyProps {
 }
 
 const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLoaded }) => {
-  const [details, setDetails] = useState<MovieDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // The `movie` prop can be partial or full. We use internal state to manage the full details.
+  const [details, setDetails] = useState<MovieDetails | null>(
+    // If the movie prop already has full details (indicated by coverUrl), use it as the initial state.
+    (movie as MovieDetails).coverUrl ? (movie as MovieDetails) : null
+  );
+  const [isLoading, setIsLoading] = useState(!details); // Only set loading to true if details are not pre-filled
   const [error, setError] = useState<string | null>(null);
   
+  // --- Performance Timing State ---
   const [metadataLoadTime, setMetadataLoadTime] = useState<number | null>(null);
   const [imageLoadTime, setImageLoadTime] = useState<number | null>(null);
-  const [isImageLoading, setIsImageLoading] = useState<boolean>(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const imageLoadStartRef = useRef<number | null>(null);
-  const fetchInitiatedRef = useRef<boolean>(false); // Ref to prevent double-invocation in Strict Mode
+  const fetchInitiatedRef = useRef(!!details); // If we have details, no need to fetch.
 
   useEffect(() => {
+    // If details are already present from props, we just need to call onLoaded and time the image.
     if (fetchInitiatedRef.current) {
-      return;
+        if(details?.coverUrl && !isImageLoading && imageLoadTime === null) {
+            setIsImageLoading(true);
+            imageLoadStartRef.current = performance.now();
+        }
+        onLoaded();
+        return;
     }
+    
     fetchInitiatedRef.current = true;
 
     if (!movie.code) {
@@ -89,7 +101,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     };
 
     fetchDetails();
-  }, [movie.code, onLoaded]);
+  }, [movie, onLoaded, details, isImageLoading, imageLoadTime]);
 
   const handleImageLoad = () => {
     if (imageLoadStartRef.current) {
@@ -101,9 +113,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
   };
 
   const handleImageError = () => {
-    setImageLoadTime(null); // Or set to -1 to indicate error
+    setImageLoadTime(null);
     setIsImageLoading(false);
-    // The onError on the img tag will handle showing the placeholder
   };
 
   if (isLoading) {
@@ -134,6 +145,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     );
   }
 
+  const finalDetails = details || movie;
+
   return (
     <div
       className="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer"
@@ -141,8 +154,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     >
       <div className="relative overflow-hidden bg-gray-700 min-h-[200px] flex items-center justify-center">
         <img
-          src={details?.coverUrl || "/placeholder-image.svg"}
-          alt={details?.displayTitle || movie.filename}
+          src={finalDetails.coverUrl || "/placeholder-image.svg"}
+          alt={finalDetails.displayTitle || finalDetails.filename}
           className="w-full h-auto object-contain max-h-[400px]"
           onLoad={handleImageLoad}
           onError={(e) => {
@@ -164,46 +177,46 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
       
       <div className="p-3 space-y-2">
         <div className="text-sm font-semibold text-white leading-tight">
-          {details?.displayTitle || movie.filename}
+          {finalDetails.displayTitle || finalDetails.filename}
         </div>
         
         <div className="space-y-1">
-          {movie.code && (
+          {finalDetails.code && (
             <div className="text-xs text-blue-300">
-              <span className="font-medium">番号:</span> {movie.code}
+              <span className="font-medium">番号:</span> {finalDetails.code}
             </div>
           )}
-          {details?.actress && (
+          {finalDetails.actress && (
             <div className="text-xs text-pink-300">
-              <span className="font-medium">女优:</span> {details.actress}
+              <span className="font-medium">女优:</span> {finalDetails.actress}
             </div>
           )}
-          {movie.year && (
+          {finalDetails.year && (
             <div className="text-xs text-green-300">
-              <span className="font-medium">年份:</span> {movie.year}
+              <span className="font-medium">年份:</span> {finalDetails.year}
             </div>
           )}
         </div>
         
-        {details?.elo && details.elo !== 1000 && (
+        {finalDetails.elo && finalDetails.elo !== 1000 && (
           <div className="bg-gray-700 rounded p-2 space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-yellow-300 font-bold">Elo评分: {details.elo}</span>
-              {details.winRate !== undefined && (
-                <span className="text-gray-300">胜率: {(details.winRate * 100).toFixed(1)}%</span>
+              <span className="text-yellow-300 font-bold">Elo评分: {finalDetails.elo}</span>
+              {finalDetails.winRate !== undefined && (
+                <span className="text-gray-300">胜率: {(finalDetails.winRate * 100).toFixed(1)}%</span>
               )}
             </div>
-            {details.matchCount !== undefined && details.matchCount > 0 && (
+            {finalDetails.matchCount !== undefined && finalDetails.matchCount > 0 && (
               <div className="text-xs text-gray-300">
-                对战记录: {details.winCount || 0}胜 {details.drawCount || 0}平 {details.lossCount || 0}负
+                对战记录: {finalDetails.winCount || 0}胜 {finalDetails.drawCount || 0}平 {finalDetails.lossCount || 0}负
               </div>
             )}
           </div>
         )}
         
         <div className="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700">
-          <span>{formatFileSize(movie.size)}</span>
-          <span>{new Date(movie.modifiedAt).toLocaleDateString()}</span>
+          <span>{formatFileSize(finalDetails.size)}</span>
+          <span>{new Date(finalDetails.modifiedAt).toLocaleDateString()}</span>
         </div>
       </div>
     </div>

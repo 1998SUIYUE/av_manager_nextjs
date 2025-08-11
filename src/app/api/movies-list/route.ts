@@ -135,6 +135,8 @@ async function scanMovieDirectory(directoryPath: string): Promise<MovieFile[]> {
 // API 入口 (GET)
 // ==================================
 
+import { getAllCachedMovieMetadata } from "@/lib/movieMetadataCache";
+
 export async function GET() {
   devWithTimestamp(`[movies-list] 接收到 GET 请求`);
   try {
@@ -151,17 +153,32 @@ export async function GET() {
         );
     }
 
-    // 只扫描目录并返回基础列表，不进行任何网络处理
-    const movies = await scanMovieDirectory(movieDirectory);
+    // 1. Scan file system to get the base list of movies
+    const moviesFromDisk = await scanMovieDirectory(movieDirectory);
     
-    // 按修改时间降序排序
-    movies.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    // 2. Get the entire metadata cache (from memory)
+    const metadataCache = await getAllCachedMovieMetadata();
 
-    devWithTimestamp(`[movies-list] 返回 ${movies.length} 条基础电影数据`);
+    // 3. Merge cached data into the list
+    const mergedMovies = moviesFromDisk.map(movie => {
+        if (movie.code) {
+            const cachedDetails = metadataCache.get(movie.code);
+            if (cachedDetails) {
+                // Return a new object with merged properties
+                return { ...movie, ...cachedDetails };
+            }
+        }
+        return movie; // Return original if no code or no cache hit
+    });
+
+    // 4. Sort the final list
+    mergedMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
+
+    devWithTimestamp(`[movies-list] 返回 ${mergedMovies.length} 条混合电影数据`);
 
     return NextResponse.json({
-      movies: movies,
-      total: movies.length,
+      movies: mergedMovies,
+      total: mergedMovies.length,
     });
   } catch (error) {
     devWithTimestamp("[movies-list] 获取电影列表时发生错误:", error);
