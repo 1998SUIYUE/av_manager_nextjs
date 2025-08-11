@@ -384,6 +384,173 @@ function parseMovieFilename(filename: string): {
   };
 }
 
+async function fetchCoverUrlFromJavbus(code: string, baseUrl: string) {
+  prodWithTimestamp(
+    `[fetchCoverUrl] [Javbus] 开始处理番号: ${code}`
+  );
+  try {
+    const res = await axios.get(`https://www.javbus.com/search/${code}`, {
+      headers: {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "cache-control": "max-age=0",
+        cookie: "existmag=mag",
+        priority: "u=0, i",
+        referer: "https://www.javbus.com/",
+        "sec-ch-ua":
+          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      },
+      timeout: 15000,
+      httpsAgent: AGENT,
+      httpAgent: AGENT,
+    });
+
+    const $0 = cheerio.load(res.data);
+    const nexturl = $0("#waterfall > div > a").attr('href') || ""
+    if (!nexturl) {
+        prodWithTimestamp(`[fetchCoverUrl] [Javbus] 未找到详情链接: ${code}`);
+        return { coverUrl: null, title: null, actress: null, kinds: [] };
+    }
+
+    const res1 = await axios.get(nexturl, {
+      headers: {
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "cache-control": "max-age=0",
+        cookie: "existmag=mag",
+        priority: "u=0, i",
+        referer: "https://www.javbus.com/",
+        "sec-ch-ua":
+          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      },
+      timeout: 15000,
+      httpsAgent: AGENT,
+      httpAgent: AGENT,
+    });
+    const $ = cheerio.load(res1.data);
+    let coverUrl =
+      "https://www.javbus.com" +
+        $(
+          "body > div.container > div.row.movie > div.col-md-9.screencap > a > img"
+        ).attr("src") || "";
+    let title = $("body > div.container > h3").text() || "";
+    let actress =
+      $(
+        "body > div.container > div.row.movie > div.col-md-3.info > p:last-child > span > a"
+      ).text() || "";
+    let blocked = [
+      "高畫質",
+      "DMM獨家",
+      "單體作品",
+      "數位馬賽克",
+      "多選提交",
+      "4K",
+      "フルハイビジョン(FHD)",
+      "MGSだけのおまけ映像付き",
+      "アクメ・オーガズム",
+    ];
+
+    let kinds_index = $(
+      "body > div.container > div.row.movie > div.col-md-3.info > p.header"
+    );
+    let kinds = kinds_index
+      .next("p")
+      .text()
+      .trim()
+      .split(/\s+/)
+      .map((tag) => tag.trim())
+      .filter(
+        (tag) => tag && !blocked.includes(tag) && !/[\u30A0-\u30FF]/.test(tag)
+      );
+
+    if (coverUrl) {
+      devWithTimestamp(`[fetchCoverUrl] [Javbus] 原始封面URL: ${coverUrl}`);
+      try {
+        const proxyApiUrl = `${baseUrl}/api/image-proxy?url=${encodeURIComponent(
+          coverUrl
+        )}&code=${encodeURIComponent(code)}`;
+        devWithTimestamp(
+          `[fetchCoverUrl] [Javbus] 调用 image-proxy: ${proxyApiUrl}`
+        );
+        const imageProxyResponse = await fetch(proxyApiUrl);
+        if (imageProxyResponse.ok) {
+          const proxyData = await imageProxyResponse.json();
+          if (
+            proxyData.imageUrl &&
+            !proxyData.imageUrl.includes("placeholder-image.svg")
+          ) {
+            coverUrl = proxyData.imageUrl;
+            devWithTimestamp(
+              `[fetchCoverUrl] [Javbus] 封面已通过 image-proxy 缓存到本地: ${coverUrl}`
+            );
+          } else {
+            devWithTimestamp(
+              `[fetchCoverUrl] [Javbus] image-proxy 返回占位符或无效图片，保持原始URL: ${coverUrl}`
+            );
+            coverUrl = "";
+          }
+        } else {
+          devWithTimestamp(
+            `[fetchCoverUrl] [Javbus] 调用 image-proxy 失败: ${imageProxyResponse.statusText}`
+          );
+        }
+      } catch (proxyError) {
+        devWithTimestamp(
+          `[fetchCoverUrl] [Javbus] 调用 image-proxy 发生错误: ${proxyError}`
+        );
+      }
+    }
+
+    if (coverUrl || title || actress) {
+      const finalCoverUrl =
+        coverUrl && !coverUrl.includes("placeholder-image.svg")
+          ? coverUrl
+          : null;
+      prodWithTimestamp(
+        `[fetchCoverUrl] [Javbus] 番号 ${code} 处理完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}`
+      );
+      await updateMovieMetadataCache(
+        code,
+        finalCoverUrl,
+        title,
+        actress,
+        kinds
+      );
+      return { coverUrl: finalCoverUrl, title, actress, kinds };
+    } else {
+      prodWithTimestamp(
+        `[fetchCoverUrl] [Javbus] 番号 ${code} 处理失败 - 未获取到任何元数据`
+      );
+       return { coverUrl: null, title: null, actress: null, kinds: [] };
+    }
+  } catch (e) {
+    prodWithTimestamp(`[fetchCoverUrl] [Javbus] 处理番号: ${code}, 失败${e}`);
+    return { coverUrl: null, title: null, actress: null, kinds: [] };
+  }
+}
+
 /**
  * 使用 DMM 抓取电影封面和元数据（对齐 scraper 逻辑）。
  * @param code - 番号/关键字
@@ -412,8 +579,8 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     const $ = cheerio.load(html);
     const detailUrl = getFirstDetailLink($, searchUrl);
     if (!detailUrl) {
-      prodWithTimestamp(`[fetchCoverUrl] [DMM] 未找到详情链接: ${code}`);
-      return { coverUrl: null, title: null, actress: null, kinds: [] };
+      // No detail link found, throw to fallback
+      throw new Error(`[DMM] 未找到详情链接: ${code}`);
     }
 
     // 2) 详情页
@@ -435,6 +602,11 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     // 标题与女优
     const title = (d$("#title").text() || "").trim();
     const actress = (d$("#performer").text() || "").trim();
+
+    // If no title, it's a failure, so fallback.
+    if (!title) {
+        throw new Error(`[DMM] 未找到标题: ${code}`);
+    }
 
     // ジャンル -> kinds（中文）
     let kinds: string[] = [];
@@ -524,8 +696,8 @@ async function fetchCoverUrl(code: string, baseUrl: string) {
     );
     return { coverUrl: finalCoverUrl, title, actress, kinds };
   } catch (e) {
-    prodWithTimestamp(`[fetchCoverUrl] [DMM] 处理番号 ${code} 失败: ${e}`);
-    return { coverUrl: null, title: null, actress: null, kinds: [] };
+    prodWithTimestamp(`[fetchCoverUrl] [DMM] 处理番号 ${code} 失败: ${e}. 尝试备用源 Javbus.`);
+    return await fetchCoverUrlFromJavbus(code, baseUrl);
   }
 }
 
