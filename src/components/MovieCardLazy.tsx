@@ -35,9 +35,10 @@ interface MovieCardLazyProps {
   movie: BaseMovieData;
   onMovieClick: (absolutePath: string) => void;
   onLoaded: () => void;
+  onDetailsLoaded: (details: MovieDetails) => void; // 新增回调函数
 }
 
-const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLoaded }) => {
+const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLoaded, onDetailsLoaded }) => {
   // The `movie` prop can be partial or full. We use internal state to manage the full details.
   const [details, setDetails] = useState<MovieDetails | null>(
     // If the movie prop already has full details (indicated by coverUrl), use it as the initial state.
@@ -45,21 +46,11 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
   );
   const [isLoading, setIsLoading] = useState(!details); // Only set loading to true if details are not pre-filled
   const [error, setError] = useState<string | null>(null);
-  
-  // --- Performance Timing State ---
-  const [metadataLoadTime, setMetadataLoadTime] = useState<number | null>(null);
-  const [imageLoadTime, setImageLoadTime] = useState<number | null>(null);
-  const [isImageLoading, setIsImageLoading] = useState(false);
-  const imageLoadStartRef = useRef<number | null>(null);
   const fetchInitiatedRef = useRef(!!details); // If we have details, no need to fetch.
 
   useEffect(() => {
-    // If details are already present from props, we just need to call onLoaded and time the image.
+    // If details are already present from props, we just need to call onLoaded.
     if (fetchInitiatedRef.current) {
-        if(details?.coverUrl && !isImageLoading && imageLoadTime === null) {
-            setIsImageLoading(true);
-            imageLoadStartRef.current = performance.now();
-        }
         onLoaded();
         return;
     }
@@ -76,7 +67,6 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     const fetchDetails = async () => {
       setIsLoading(true);
       setError(null);
-      const startTime = performance.now();
 
       try {
         const response = await fetch(`/api/movie-details/${movie.code}`);
@@ -85,36 +75,25 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
         }
         const data: MovieDetails = await response.json();
         setDetails(data);
-        if (data.coverUrl) {
-          setIsImageLoading(true);
-          imageLoadStartRef.current = performance.now();
-        }
+        onDetailsLoaded(data); // 在获取到数据后，调用回调
       } catch (e) {
         setError(e instanceof Error ? e.message : 'An unknown error occurred');
         console.error(`Failed to load details for ${movie.code}`, e);
       } finally {
-        const endTime = performance.now();
-        setMetadataLoadTime(Math.round(endTime - startTime));
         setIsLoading(false);
         onLoaded();
       }
     };
 
     fetchDetails();
-  }, [movie, onLoaded, details, isImageLoading, imageLoadTime]);
+  }, [movie, onLoaded, onDetailsLoaded]);
 
   const handleImageLoad = () => {
-    if (imageLoadStartRef.current) {
-      const endTime = performance.now();
-      setImageLoadTime(Math.round(endTime - imageLoadStartRef.current));
-      imageLoadStartRef.current = null;
-    }
-    setIsImageLoading(false);
+    // Placeholder function, can be used for other logic if needed in the future
   };
 
   const handleImageError = () => {
-    setImageLoadTime(null);
-    setIsImageLoading(false);
+    // Placeholder function
   };
 
   if (isLoading) {
@@ -139,7 +118,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
         <div className="p-3">
           <p className="text-sm font-semibold text-white leading-tight truncate">{movie.filename}</p>
           <p className="text-xs text-red-400 mt-2">Error: {error}</p>
-          {metadataLoadTime !== null && <p className="text-xs text-gray-500">耗时: {metadataLoadTime}ms</p>}
+          
         </div>
       </div>
     );
@@ -164,18 +143,12 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
             }
           }}
         />
-        {(metadataLoadTime !== null || isImageLoading || imageLoadTime !== null) && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 text-center">
-                {metadataLoadTime !== null && `详情: ${metadataLoadTime}ms`}
-                {isImageLoading && ` | 图片: 加载中...`}
-                {imageLoadTime !== null && ` | 图片: ${imageLoadTime}ms`}
-            </div>
-        )}
+        
       </div>
       
       <div className="p-3 space-y-2">
         <div className="text-sm font-semibold text-white leading-tight">
-          {details?.displayTitle || movie.filename}
+          {details ? (details.displayTitle || details.title) : (movie.title || movie.filename)}
         </div>
         
         <div className="space-y-1">

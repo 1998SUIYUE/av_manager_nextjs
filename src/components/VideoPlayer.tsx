@@ -235,7 +235,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<VideoError | null>(null);
-  const [showTechInfo, setShowTechInfo] = useState(false);
+  // const [showTechInfo, setShowTechInfo] = useState(false);
   const [techInfo, setTechInfo] = useState<VideoTechInfo>({
     resolution: "--",
     frameRate: "--",
@@ -249,14 +249,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   });
   const [isMobile, setIsMobile] = useState(false);
   const [bufferedRanges, setBufferedRanges] = useState<{start: number, end: number}[]>([]);
-  const [showBufferInfo, setShowBufferInfo] = useState(false);
+  // const [showBufferInfo, setShowBufferInfo] = useState(false);
   const [forwardStep, setForwardStep] = useState(forwardSeconds); // New state for dynamic forward time
+  const forwardStepRef = useRef(forwardStep);
+  useEffect(() => {
+    forwardStepRef.current = forwardStep;
+  }, [forwardStep]);
   const [, forceUpdate] = useState(0); // Dummy state to force re-renders
   
   // 添加显示/隐藏技术信息的切换函数
-  const toggleTechInfo = useCallback(() => {
-    setShowTechInfo((prev) => !prev);
-  }, []);
+  // const toggleTechInfo = useCallback(() => {
+  //   setShowTechInfo((prev) => !prev);
+  // }, []);
 
   // 性能优化：使用 useCallback 缓存事件处理函数
   const handleError = useCallback(
@@ -491,10 +495,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleInteraction,
   ]);
 
-  // 添加键盘事件处理
+  // 添加键盘事件处理（只注册一次，使用 ref 读取最新步长）
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const videoElement = videoRef.current;
+      const targetEl = e.target as HTMLElement | null;
+      const beforeTime = videoElement ? videoElement.currentTime : undefined;
+      const activeIsVideo = document.activeElement === videoElement;
+      devWithTimestamp('[Hotkey] keydown', {
+        key: e.key,
+        repeat: e.repeat,
+        eventPhase: e.eventPhase,
+        bubbles: e.bubbles,
+        cancelable: e.cancelable,
+        defaultPrevented: e.defaultPrevented,
+        targetTag: targetEl?.tagName,
+        activeIsVideo,
+        forwardStep: forwardStepRef.current,
+        beforeTime,
+      });
       if (!videoElement) return;
 
       // 当焦点在输入框等元素时，不触发快捷键
@@ -502,18 +521,33 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
+      // 忽略长按导致的重复触发
+
+
       // 右键快进
       if (e.key === "ArrowRight") {
+        // 防止浏览器/视频控件的默认快进行为
         e.preventDefault();
-        devWithTimestamp(`[VideoPlayer Hotkey] Fast-forwarding by: ${forwardStep} seconds`);
-        videoElement.currentTime = Math.min(
-          videoElement.currentTime + forwardStep,
-          videoElement.duration
-        );
+        e.stopPropagation();
+        const before = videoElement.currentTime;
+        const step = forwardStepRef.current;
+        const target = Math.min(before + step, videoElement.duration);
+        devWithTimestamp(`[VideoPlayer Hotkey] FF request`, { before, step, target });
+        videoElement.currentTime = target;
+        // 强制位点，避免 UA 默认行为追加跳转
+        requestAnimationFrame(() => {
+          videoElement.currentTime = target;
+          devWithTimestamp(`[VideoPlayer Hotkey] FF enforced (rAF)`, { now: videoElement.currentTime });
+        });
+        setTimeout(() => {
+          videoElement.currentTime = target;
+          devWithTimestamp(`[VideoPlayer Hotkey] FF enforced (50ms)`, { now: videoElement.currentTime });
+        }, 50);
+        return;
       } else if (e.key === "ArrowLeft") {
         // 添加左键快退
         e.preventDefault();
-        videoElement.currentTime = Math.max(videoElement.currentTime - forwardStep, 0);
+        videoElement.currentTime = Math.max(videoElement.currentTime - forwardStepRef.current, 0);
       } else if (e.key === " ") {
         // 空格键暂停/播放
         e.preventDefault();
@@ -524,29 +558,68 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
       
-      // 切换技术信息显示 (按 I 键)
-      if (e.key === "i" || e.key === "I") {
-        toggleTechInfo();
-      }
-      
-      // 切换缓冲信息显示 (按 B 键)
-      if (e.key === "b" || e.key === "B") {
-        setShowBufferInfo(prev => !prev);
-      }
     };
 
     // Listener 1: Global listener for general use
-    document.addEventListener("keydown", handleKeyDown);
+    if (!(window as any).__rovodevKeydownDebugInstalled) {
+      (window as any).__rovodevKeydownDebugInstalled = true;
+      const origAdd = EventTarget.prototype.addEventListener;
+      const origRemove = EventTarget.prototype.removeEventListener;
+      const keydownRegistry = new WeakMap<EventTarget, Set<EventListenerOrEventListenerObject>>();
+      // @ts-ignore
+      EventTarget.prototype.addEventListener = function(type: any, listener: any, options?: any) {
+        if (type === 'keydown') {
+          try {
+            const tag = (this as any)?.tagName || (this as any)?.constructor?.name || 'unknown';
+            devWithTimestamp('[Hotkey][addEventListener]', { target: tag });
+            let set = keydownRegistry.get(this);
+            if (!set) {
+              set = new Set();
+              keydownRegistry.set(this, set);
+            }
+            set.add(listener);
+          } catch {}
+        }
+        // @ts-ignore
+        return origAdd.call(this, type, listener, options);
+      };
+      // @ts-ignore
+      EventTarget.prototype.removeEventListener = function(type: any, listener: any, options?: any) {
+        if (type === 'keydown') {
+          try {
+            const tag = (this as any)?.tagName || (this as any)?.constructor?.name || 'unknown';
+            devWithTimestamp('[Hotkey][removeEventListener]', { target: tag });
+            const set = keydownRegistry.get(this);
+            set?.delete(listener);
+          } catch {}
+        }
+        // @ts-ignore
+        return origRemove.call(this, type, listener, options);
+      };
+      (window as any).__printKeydownListeners = () => {
+        try {
+          const videoEl = videoRef.current as unknown as EventTarget | null;
+          const docCount = keydownRegistry.get(document as unknown as EventTarget)?.size || 0;
+          const videoCount = videoEl ? keydownRegistry.get(videoEl)?.size || 0 : 0;
+          devWithTimestamp('[Hotkey] keydown listeners count', { document: docCount, video: videoCount });
+        } catch {}
+      };
+    }
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    devWithTimestamp('[Hotkey] listener added on document', { forwardStep });
+    // 打印当前已注册的 keydown 监听数量
+    setTimeout(() => {
+      try { (window as any).__printKeydownListeners?.(); } catch {}
+    }, 0);
     
-    // Listener 2: Local listener on the video element for when it has focus
+    // 移除 video 元素上的本地键盘监听，避免冒泡导致双触发
     const videoElement = videoRef.current;
-    videoElement?.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      videoElement?.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true } as any);
     };
-  }, [forwardStep, toggleTechInfo]);
+  }, []);
 
   
 
@@ -598,7 +671,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [isLoading]);
   
   // 视频技术信息显示
-  const TechInfoDisplay = useMemo(() => {
+  /* const TechInfoDisplay = useMemo(() => {
     if (!showTechInfo) return null;
     
     return (
@@ -614,7 +687,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="mt-1 text-gray-300 text-[10px]">按 I 键切换信息显示</div>
       </div>
     );
-  }, [showTechInfo, techInfo]);
+  }, [showTechInfo, techInfo]); */
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -624,54 +697,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, []);
 
   // 🚀 缓冲进度条显示组件
-  const BufferDisplay = useMemo(() => {
-    if (!showBufferInfo) return null;
-
-    return (
-      <div className="absolute bottom-16 left-4 right-4 bg-black bg-opacity-75 text-white p-3 rounded text-sm z-10">
-        <div className="mb-2 font-bold">缓冲状态 (按 B 键切换)</div>
-        
-        {/* 可视化进度条 */}
-        <div className="relative w-full h-2 bg-gray-600 rounded mb-2">
-          {bufferedRanges.map((range, index) => (
-            <div
-              key={index}
-              className="absolute h-full bg-blue-400 rounded"
-              style={{
-                left: `${range.start}%`,
-                width: `${range.end - range.start}%`,
-              }}
-            />
-          ))}
-          {/* 当前播放位置指示器 */}
-          {videoRef.current && videoRef.current.duration > 0 && (
-            <div
-              className="absolute top-0 w-0.5 h-full bg-red-500"
-              style={{
-                left: `${(videoRef.current.currentTime / videoRef.current.duration) * 100}%`,
-              }}
-            />
-          )}
-        </div>
-        
-        {/* 详细信息 */}
-        <div className="text-xs space-y-1">
-          <div>缓冲段数: {bufferedRanges.length}</div>
-          {bufferedRanges.map((range, index) => (
-            <div key={index} className="text-gray-300">
-              段 {index + 1}: {range.start.toFixed(1)}% - {range.end.toFixed(1)}% 
-              ({(range.end - range.start).toFixed(1)}% 已缓存)
-            </div>
-          ))}
-          {videoRef.current && videoRef.current.duration > 0 && (
-            <div className="text-yellow-300">
-              当前位置: {((videoRef.current.currentTime / videoRef.current.duration) * 100).toFixed(1)}%
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }, [showBufferInfo, bufferedRanges]);
+  // const BufferDisplay = null;
 
   return (
     <div className="relative w-full h-full group">
@@ -708,8 +734,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
         </div>
       )}
-      {TechInfoDisplay}
-      {BufferDisplay}
       {LoadingIndicator}
       {ErrorDisplay}
 

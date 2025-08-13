@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next build && next start",
+    "start": "next start",
     "lint": "next lint",
-    
+    "sb": "next build && next start",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:pack": "electron-builder",
     "build:electron": "npm run build && npm run electron:pack",

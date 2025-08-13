@@ -3,8 +3,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import MovieCardLazy from "@/components/MovieCardLazy";
-import { formatFileSize } from "@/utils/formatFileSize";
+
 import { devWithTimestamp } from "@/utils/logger";
+
 import VideoPlayer from "@/components/VideoPlayer";
 
 // 安全的Base64编码函数
@@ -17,8 +18,8 @@ function safeBase64Encode(str: string): string {
   }
 }
 
-// 基础电影数据接口
-interface BaseMovieData {
+// 扩展电影数据接口以包含所有可能的字段
+interface MovieData {
   filename: string;
   path: string;
   absolutePath: string;
@@ -29,19 +30,39 @@ interface BaseMovieData {
   year?: string;
   code?: string;
   modifiedAt: number;
+  coverUrl?: string | null;
+  displayTitle?: string;
+  actress?: string | null;
+  kinds?: string[];
+  elo?: number;
+  matchCount?: number;
+  winCount?: number;
+  drawCount?: number;
+  lossCount?: number;
+  winRate?: number;
 }
+
 
 // 定义排序模式的类型
 type SortMode = "time" | "size"; // 初始版本不支持按评分排序
 
 const MoviesLazyPage = () => {
-  const [movies, setMovies] = useState<BaseMovieData[]>([]);
+  const [movies, setMovies] = useState<MovieData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("time");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [totalMovies, setTotalMovies] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
+
+  // 新增：筛选器相关状态
+  const [actress, setActress] = useState<{ name: string, count: number }[]>([]);
+  const [genres, setGenres] = useState<{ name: string, count: number }[]>([]);
+  const [selectedActress, setSelectedActress] = useState<string | null>(null);
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [showActressFilters, setShowActressFilters] = useState<boolean>(false);
+  const [showGenreFilters, setShowGenreFilters] = useState<boolean>(false);
+
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
@@ -79,6 +100,44 @@ const MoviesLazyPage = () => {
   const handleCardLoaded = useCallback(() => {
     setLoadedCount(prevCount => prevCount + 1);
   }, []);
+
+  // 新增：处理子组件加载的详细信息
+  const handleDetailsLoaded = useCallback((details: MovieData) => {
+    setMovies(prevMovies => 
+      prevMovies.map(movie => 
+        movie.absolutePath === details.absolutePath ? details : movie
+      )
+    );
+  }, []);
+
+  // 使用 useMemo 动态计算女优和分类列表
+  useEffect(() => {
+    const actressCounts = new Map<string, number>();
+    const genreCounts = new Map<string, number>();
+
+    movies.forEach(movie => {
+      if (movie.actress) {
+        actressCounts.set(movie.actress, (actressCounts.get(movie.actress) || 0) + 1);
+      }
+      if (movie.kinds) {
+        movie.kinds.forEach(kind => {
+          genreCounts.set(kind, (genreCounts.get(kind) || 0) + 1);
+        });
+      }
+    });
+
+    const sortedActress = Array.from(actressCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    const sortedGenres = Array.from(genreCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    setActress(sortedActress);
+    setGenres(sortedGenres);
+  }, [movies]);
+
 
   const handleMovieClick = useCallback((absolutePath: string) => {
     setSelectedVideoPath(absolutePath);
@@ -121,14 +180,33 @@ const MoviesLazyPage = () => {
   const sortedAndFilteredMovies = useMemo(() => {
     let currentMovies = [...movies];
 
+    // 1. Apply general search query
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
       currentMovies = currentMovies.filter(movie => 
         (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
         (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
+        (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
         (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
       );
     }
+
+    // 2. Apply actress filter
+    if (selectedActress) {
+      const lowerCaseActress = selectedActress.toLowerCase();
+      currentMovies = currentMovies.filter(movie => 
+        movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
+      );
+    }
+
+    // 3. Apply genre filter
+    if (selectedGenre) {
+      currentMovies = currentMovies.filter(movie => 
+        movie.kinds && movie.kinds.includes(selectedGenre)
+      );
+    }
+
 
     if (sortMode === "time") {
       currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
@@ -136,7 +214,7 @@ const MoviesLazyPage = () => {
       currentMovies.sort((a, b) => b.size - a.size);
     }
     return currentMovies;
-  }, [movies, sortMode, searchQuery]);
+  }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]);
 
   const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
 
@@ -148,7 +226,7 @@ const MoviesLazyPage = () => {
         <div className="relative w-full sm:w-1/2">
             <input
               type="text"
-              placeholder="搜索电影 (标题, 番号, 文件名)..."
+              placeholder="搜索电影 (标题, 番号, 女优, 文件名)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full p-2 pr-10 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -181,6 +259,73 @@ const MoviesLazyPage = () => {
         </div>
       </div>
 
+      {/* 女优筛选器区域 */}
+      <div className={`mb-4 transition-all duration-300 ${showActressFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-xl font-semibold">女优：</h3>
+          <button
+            onClick={() => setShowActressFilters(prev => !prev)}
+            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
+          >
+            {showActressFilters ? '收起' : '展开'}
+          </button>
+        </div>
+        <div className={`flex flex-wrap items-center -mb-2 ${showActressFilters ? '' : 'overflow-hidden max-h-7'}`}>
+          {actress.map((actressData) => (
+            <button
+              key={`actress-${actressData.name}`}
+              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedActress === actressData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+              onClick={() => {
+                if (selectedActress === actressData.name) {
+                  setSelectedActress(null);
+                  setSearchQuery("");
+                } else {
+                  setSelectedActress(actressData.name);
+                  setSelectedGenre(null);
+                  setSearchQuery(actressData.name || "");
+                }
+              }}
+            >
+              {actressData.name} ({actressData.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 电影类别筛选器区域 */}
+      <div className={`mb-4 transition-all duration-300 ${showGenreFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-xl font-semibold">类别：</h3>
+          <button
+            onClick={() => setShowGenreFilters(prev => !prev)}
+            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
+          >
+            {showGenreFilters ? '收起' : '展开'}
+          </button>
+        </div>
+        <div className={`flex flex-wrap items-center -mb-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-7'}`}>
+          {genres.map((genreData) => (
+            <button
+              key={`genre-${genreData.name}`}
+              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedGenre === genreData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
+              onClick={() => {
+                if (selectedGenre === genreData.name) {
+                  setSelectedGenre(null);
+                  setSearchQuery("");
+                } else {
+                  setSelectedGenre(genreData.name);
+                  setSelectedActress(null);
+                  setSearchQuery("");
+                }
+              }}
+            >
+              {genreData.name} ({genreData.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+
       {loading && <p className="text-center text-xl mb-4">正在加载电影列表...</p>}
       {error && <p className="text-center text-red-500 mb-4">错误: {error}</p>}
 
@@ -189,7 +334,7 @@ const MoviesLazyPage = () => {
         {totalToLoad > 0 && loadedCount < totalToLoad && (
           <p className="text-sm text-yellow-400">正在加载详情: {loadedCount} / {totalToLoad}</p>
         )}
-        {searchQuery && (
+        {(searchQuery || selectedActress || selectedGenre) && (
           <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
         )}
       </div>
@@ -201,6 +346,7 @@ const MoviesLazyPage = () => {
             movie={movie} 
             onMovieClick={handleMovieClick}
             onLoaded={handleCardLoaded}
+            onDetailsLoaded={handleDetailsLoaded}
           />
         ))}
       </div>
