@@ -216,6 +216,16 @@ const MoviesLazyPage = () => {
     return currentMovies;
   }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]);
 
+  const handleRandomPlay = useCallback(() => {
+    const pool = sortedAndFilteredMovies.length > 0 ? sortedAndFilteredMovies : movies;
+    if (!pool.length) {
+      alert('当前没有可供随机播放的影片');
+      return;
+    }
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    handleMovieClick(pool[randomIndex].absolutePath);
+  }, [sortedAndFilteredMovies, movies, handleMovieClick]);
+
   const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
 
   return (
@@ -255,6 +265,14 @@ const MoviesLazyPage = () => {
             className={`px-4 py-2 rounded-md ${sortMode === "size" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
           >
             按大小排序
+          </button>
+
+          <button
+            onClick={handleRandomPlay}
+            title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
+            className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-500"
+          >
+            随机播放
           </button>
         </div>
       </div>
