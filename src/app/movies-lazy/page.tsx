@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import MovieCardLazy from "@/components/MovieCardLazy";
 
 import { devWithTimestamp } from "@/utils/logger";
@@ -71,6 +71,11 @@ const MoviesLazyPage = () => {
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
   const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
+
+  // 新增：播放器内删除按钮的状态
+  const [isConfirmingPlayerDelete, setIsConfirmingPlayerDelete] = useState(false);
+  const [isDeletingFromPlayer, setIsDeletingFromPlayer] = useState(false);
+  const playerDeleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchMovies = useCallback(async () => {
     setLoading(true);
@@ -173,13 +178,16 @@ const MoviesLazyPage = () => {
   const handleCloseVideoPlayer = useCallback(() => {
     setSelectedVideoPath(null);
     setShowVideoPlayer(false);
+    // 重置播放器删除按钮状态
+    setIsConfirmingPlayerDelete(false);
+    setIsDeletingFromPlayer(false);
+    if (playerDeleteConfirmTimeoutRef.current) {
+      clearTimeout(playerDeleteConfirmTimeoutRef.current);
+    }
   }, []);
 
-  const handleDeleteMovieClick = useCallback(async (filePath: string, filename?: string) => {
-    if (!filePath || !confirm(`确定要删除电影 "${filename || filePath}" 吗？`)) {
-      return;
-    }
-
+  // --- 核心删除逻辑 (已解耦) ---
+  const handleDeleteMovieClick = useCallback(async (filePath: string) => {
     try {
       const response = await fetch("/api/movies/delete-file", {
         method: "DELETE",
@@ -191,16 +199,52 @@ const MoviesLazyPage = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || "删除文件失败");
       }
-
-      alert(`电影 "${filename || filePath}" 已成功删除。`);
-      setShowVideoPlayer(false);
+      
       setMovies(prevMovies => prevMovies.filter(movie => movie.absolutePath !== filePath));
       setTotalMovies(prevTotal => Math.max(0, prevTotal - 1));
 
     } catch (error) {
       devWithTimestamp(`删除电影时发生错误: ${filePath}`, error);
-      alert(error instanceof Error ? error.message : "删除电影时发生错误");
+      throw error;
     }
+  }, []);
+
+  // --- 播放器内部的删除处理函数 (新版) ---
+  const handleDeleteFromPlayer = useCallback(async () => {
+    if (!selectedVideoPath) return;
+
+    if (playerDeleteConfirmTimeoutRef.current) {
+      clearTimeout(playerDeleteConfirmTimeoutRef.current);
+    }
+
+    if (isConfirmingPlayerDelete) {
+      setIsDeletingFromPlayer(true);
+      const filename = movies.find(m => m.absolutePath === selectedVideoPath)?.filename || selectedVideoPath;
+      try {
+        await handleDeleteMovieClick(selectedVideoPath);
+        setShowVideoPlayer(false); // 成功后关闭
+      } catch (error) {
+        alert(`删除电影 "${filename}" 失败: ${error instanceof Error ? error.message : String(error)}`);
+        // 失败后重置按钮状态
+        setIsConfirmingPlayerDelete(false);
+      } finally {
+        setIsDeletingFromPlayer(false);
+      }
+    } else {
+      setIsConfirmingPlayerDelete(true);
+      playerDeleteConfirmTimeoutRef.current = setTimeout(() => {
+        setIsConfirmingPlayerDelete(false);
+      }, 4000); // 4秒自动取消
+    }
+  }, [selectedVideoPath, isConfirmingPlayerDelete, handleDeleteMovieClick, movies]);
+
+  // --- Effect for cleaning up timeout ---
+  useEffect(() => {
+    return () => {
+      if (playerDeleteConfirmTimeoutRef.current) {
+        clearTimeout(playerDeleteConfirmTimeoutRef.current);
+      }
+    };
   }, []);
 
   const sortedAndFilteredMovies = useMemo(() => {
@@ -431,6 +475,7 @@ const MoviesLazyPage = () => {
             onMovieClick={handleMovieClick}
             onLoaded={handleCardLoaded}
             onDetailsLoaded={handleDetailsLoaded}
+            onDelete={handleDeleteMovieClick} // 传递新的删除函数
           />
         ))}
       </div>
@@ -454,11 +499,22 @@ const MoviesLazyPage = () => {
               filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
             />
             <button
-              onClick={() => handleDeleteMovieClick(selectedVideoPath, movies.find(m => m.absolutePath === selectedVideoPath)?.filename)}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-semibold shadow-lg mt-4 self-end"
+              onClick={handleDeleteFromPlayer}
+              disabled={isDeletingFromPlayer}
+              className={`text-white px-4 py-2 rounded-md text-sm font-semibold shadow-lg mt-4 self-end transition-all duration-200 ${
+                isDeletingFromPlayer
+                  ? 'bg-gray-500 cursor-not-allowed'
+                  : isConfirmingPlayerDelete
+                  ? 'bg-red-700 hover:bg-red-800'
+                  : 'bg-red-600 hover:bg-red-700'
+              }`}
               style={{ zIndex: 10 }}
             >
-              删除电影
+              {isDeletingFromPlayer 
+                ? '删除中...'
+                : isConfirmingPlayerDelete
+                ? '确认删除？'
+                : '删除电影'}
             </button>
           </div>
         </div>
