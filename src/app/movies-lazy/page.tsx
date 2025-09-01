@@ -63,6 +63,10 @@ const MoviesLazyPage = () => {
   const [showActressFilters, setShowActressFilters] = useState<boolean>(false);
   const [showGenreFilters, setShowGenreFilters] = useState<boolean>(false);
 
+  // 新增：用于存储和控制重复电影的显示
+  const [duplicateMovies, setDuplicateMovies] = useState<Record<string, MovieData[]>>({});
+  const [showDuplicates, setShowDuplicates] = useState<boolean>(false);
+
 
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
@@ -136,6 +140,28 @@ const MoviesLazyPage = () => {
 
     setActress(sortedActress);
     setGenres(sortedGenres);
+  }, [movies]);
+
+  // 新增：识别重复的电影
+  useEffect(() => {
+    const moviesByCode = new Map<string, MovieData[]>();
+    
+    movies.forEach(movie => {
+      if (movie.code) {
+        const existing = moviesByCode.get(movie.code) || [];
+        existing.push(movie);
+        moviesByCode.set(movie.code, existing);
+      }
+    });
+
+    const foundDuplicates: Record<string, MovieData[]> = {};
+    moviesByCode.forEach((movieGroup, code) => {
+      if (movieGroup.length > 1) {
+        foundDuplicates[code] = movieGroup;
+      }
+    });
+
+    setDuplicateMovies(foundDuplicates);
   }, [movies]);
 
 
@@ -342,6 +368,46 @@ const MoviesLazyPage = () => {
           ))}
         </div>
       </div>
+
+      {/* 新增：重复电影展示区域 */}
+      {Object.keys(duplicateMovies).length > 0 && (
+        <div className="mb-4 p-4 bg-gray-800 rounded-lg shadow-md">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-xl font-semibold text-yellow-400">
+              重复的电影 ({Object.keys(duplicateMovies).length} 组)
+            </h3>
+            <button
+              onClick={() => setShowDuplicates(prev => !prev)}
+              className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
+            >
+              {showDuplicates ? '收起' : '展开'}
+            </button>
+          </div>
+          {showDuplicates && (
+            <div className="mt-4 space-y-4">
+              {Object.entries(duplicateMovies).map(([code, movies]) => (
+                <div key={code} className="p-3 bg-gray-700 rounded">
+                  <h4 className="font-bold text-lg text-blue-300 mb-2">{code}</h4>
+                  <ul className="list-disc list-inside space-y-1">
+                    {movies.map(movie => (
+                      <li key={movie.absolutePath} className="text-sm text-gray-300">
+                        <span 
+                          className="cursor-pointer hover:underline hover:text-white"
+                          onClick={() => handleMovieClick(movie.absolutePath)}
+                          title={`点击播放: ${movie.filename}`}
+                        >
+                          {movie.filename}
+                        </span>
+                        <span className="text-gray-400 ml-2">({(movie.sizeInGB).toFixed(2)} GB)</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
 
       {loading && <p className="text-center text-xl mb-4">正在加载电影列表...</p>}
