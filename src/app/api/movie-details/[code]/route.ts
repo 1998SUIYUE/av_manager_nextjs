@@ -18,7 +18,7 @@ export async function GET(
     }
 
     const cachedMetadata = await getCachedMovieMetadata(code);
-    if (cachedMetadata && cachedMetadata.title) {
+    if (cachedMetadata && cachedMetadata.title && cachedMetadata.coverUrl) {
         devWithTimestamp(`[movie-details] 缓存命中: ${code}`);
         return NextResponse.json(cachedMetadata);
     }
