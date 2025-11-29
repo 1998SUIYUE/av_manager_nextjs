@@ -3,6 +3,16 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatFileSize } from '@/utils/formatFileSize';
+import { devWithTimestamp } from '@/utils/logger';
+
+function safeBase64Encode(str: string): string {
+  try {
+    return btoa(encodeURIComponent(str));
+  } catch {
+    // 兼容性降级
+    return encodeURIComponent(str);
+  }
+}
 
 // (Interfaces remain the same)
 interface BaseMovieData {
@@ -62,8 +72,30 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
   }, []);
 
   const handleImageLoad = () => {};
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+  const handleImageError = async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget;
+    // 如果已有占位图，就不再尝试
+    if (target.src === window.location.origin + "/placeholder-image.svg") {
+      return;
+    }
+
+    // 先尝试调用后端缩略图生成接口
+    try {
+      const b64 = safeBase64Encode(movie.absolutePath);
+      const resp = await fetch(`/api/video/thumbnail?path=${b64}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data?.imageUrl) {
+          target.src = data.imageUrl;
+          return;
+        }
+      }
+    } catch (err) {
+      // 忽略错误，继续降级
+      console.warn('fallback thumbnail failed', err);
+    }
+
+    // 最终回退到占位图
     if (target.src !== window.location.origin + "/placeholder-image.svg") {
       target.src = "/placeholder-image.svg";
     }
@@ -130,13 +162,17 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
       setError(null);
       try {
         const response = await fetch(`/api/movie-details/${movie.code}`);
-        if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+        if (!response.ok) {
+          const err = new Error(`API Error: ${response.status} ${response.statusText}`);
+          devWithTimestamp(`[movie-details] 请求失败 code=${movie.code}:`, err.message);
+          throw err;
+        }
         const data: MovieDetails = await response.json();
         setDetails(data);
         onDetailsLoaded(data);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'An unknown error occurred');
-        console.error(`Failed to load details for ${movie.code}`, e);
+        devWithTimestamp(`[movie-details] 详情加载失败 code=${movie.code}:`, e instanceof Error ? e.message : String(e));
       } finally {
         setIsLoading(false);
         onLoaded();
@@ -158,19 +194,6 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     );
   }
 
-  if (error) {
-    return (
-      <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-red-500/50">
-        <div className="bg-gray-700 h-56 w-full flex items-center justify-center">
-            <span className='text-red-400 text-xs text-center p-2'>加载失败</span>
-        </div>
-        <div className="p-3">
-          <p className="text-sm font-semibold text-white leading-tight truncate">{movie.filename}</p>
-          <p className="text-xs text-red-400 mt-2">Error: {error}</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
