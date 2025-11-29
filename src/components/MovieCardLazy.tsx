@@ -71,6 +71,9 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
     };
   }, []);
 
+  // 标记是否使用了抽帧缩略图
+  const [usedFrameThumb, setUsedFrameThumb] = useState(false);
+
   const handleImageLoad = () => {};
   const handleImageError = async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget;
@@ -86,13 +89,13 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
       if (resp.ok) {
         const data = await resp.json();
         if (data?.imageUrl) {
+          setUsedFrameThumb(true);
           target.src = data.imageUrl;
           return;
         }
       }
     } catch (err) {
-      // 忽略错误，继续降级
-      console.warn('fallback thumbnail failed', err);
+      devWithTimestamp('[thumbnail] 抽帧回退失败', err);
     }
 
     // 最终回退到占位图
@@ -197,16 +200,19 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
 
   return (
     <div
-      className="relative bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition duration-300 hover:scale-105 cursor-pointer"
+      className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl shadow-black/40 cursor-pointer transition-all duration-300 hover:shadow-2xl hover:shadow-black/50 hover:-translate-y-0.5"
       onClick={handleCardClick}
     >
-      {/* --- 删除按钮 --- */}
+      {/* 渐变描边 */}
+      <div className="pointer-events-none absolute inset-px rounded-[14px] bg-gradient-to-b from-white/5 to-transparent" />
+
+      {/* 删除按钮 */}
       <button
         onClick={handleDeleteClick}
-        className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-white transition-all duration-200 ${
+        className={`absolute top-2 right-2 z-20 p-2 rounded-full text-white transition-all duration-200 ${
           isConfirmingDelete 
             ? 'bg-red-600 hover:bg-red-700 scale-110' 
-            : 'bg-black bg-opacity-50 hover:bg-opacity-75'
+            : 'bg-black/50 backdrop-blur hover:bg-black/60'
         }`}
         aria-label={isConfirmingDelete ? "Confirm delete" : "Delete movie"}
       >
@@ -222,9 +228,9 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
         )}
       </button>
       
-      {/* --- 删除加载遮罩 --- */}
+      {/* 删除加载遮罩 */}
       {isDeleting && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-20">
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-30">
           <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -233,29 +239,55 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
         </div>
       )}
 
-      <div className={`relative overflow-hidden bg-gray-700 min-h-[200px] flex items-center justify-center ${isConfirmingDelete ? 'opacity-50' : ''}`}>
+      {/* 封面区域 */}
+      <div className={`relative overflow-hidden bg-slate-800/80 min-h-[220px] flex items-center justify-center ${isConfirmingDelete ? 'opacity-50' : ''}`}>
+        {/* 播放覆层 */}
+        <div className="absolute inset-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-black/70 via-black/10 to-transparent flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center shadow-lg">
+            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+          </div>
+        </div>
+
+        {/* 抽帧角标 */}
+        {usedFrameThumb && (
+          <div className="absolute left-2 top-2 z-10 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            抽帧封面
+          </div>
+        )}
+
+        {/* 封面图 */}
         <img
           src={details?.coverUrl || "/placeholder-image.svg"}
           alt={details?.displayTitle || movie.filename}
-          className="w-full h-auto object-contain max-h-[400px]"
+          className="w-full h-auto object-contain max-h-[420px] transition-transform duration-500 group-hover:scale-[1.02]"
           onLoad={handleImageLoad}
           onError={handleImageError}
         />
       </div>
       
+      {/* 信息区 */}
       <div className={`p-3 space-y-2 ${isConfirmingDelete ? 'opacity-50' : ''}`}>
-        <div className="text-sm font-semibold text-white leading-tight">
+        <div className="text-sm font-semibold text-white leading-tight line-clamp-2">
           {details ? (details.displayTitle || details.title) : (movie.title || movie.filename)}
         </div>
         
-        <div className="space-y-1">
-          {movie.code && <div className="text-xs text-blue-300"><span className="font-medium">番号:</span> {movie.code}</div>}
-          {details?.actress && <div className="text-xs text-pink-300"><span className="font-medium">女优:</span> {details.actress}</div>}
-          {movie.year && <div className="text-xs text-green-300"><span className="font-medium">年份:</span> {movie.year}</div>}
+        <div className="flex flex-wrap gap-1.5">
+          {movie.code && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30">番号 {movie.code}</span>
+          )}
+          {details?.actress && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-pink-500/15 text-pink-300 border border-pink-500/30">女优 {details.actress}</span>
+          )}
+          {movie.year && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">年份 {movie.year}</span>
+          )}
+          {usedFrameThumb && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">由视频抽帧</span>
+          )}
         </div>
         
         {details?.elo && details.elo !== 1000 && (
-          <div className="bg-gray-700 rounded p-2 space-y-1">
+          <div className="rounded-lg p-2 space-y-1 bg-slate-800/70 border border-slate-700">
             <div className="flex items-center justify-between text-xs">
               <span className="text-yellow-300 font-bold">Elo评分: {details.elo}</span>
               {details.winRate !== undefined && <span className="text-gray-300">胜率: {(details.winRate * 100).toFixed(1)}%</span>}
@@ -264,7 +296,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
           </div>
         )}
         
-        <div className="flex justify-between items-center text-xs text-gray-400 pt-1 border-t border-gray-700">
+        <div className="flex justify-between items-center text-xs text-gray-400 pt-2 border-t border-slate-800">
           <span>{formatFileSize(movie.size)}</span>
           <span>{new Date(movie.modifiedAt).toLocaleDateString()}</span>
         </div>

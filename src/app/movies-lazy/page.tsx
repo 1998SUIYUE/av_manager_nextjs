@@ -299,226 +299,223 @@ const MoviesLazyPage = () => {
   const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
-      <h1 className="text-4xl font-bold text-center mb-8">电影列表 (懒加载)</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
+      {/* Hero */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 opacity-30 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.35),transparent_60%)]" />
+        <div className="max-w-7xl mx-auto px-4 pt-10 pb-6">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300">我的影片库</span>
+            <span className="ml-2 text-slate-300 text-lg align-middle">(懒加载)</span>
+          </h1>
+          <p className="mt-3 text-slate-400 max-w-2xl">智能抓取元数据 · 抽帧自动封面 · 即点即播 · 支持筛选与随机播放</p>
 
-      <div className="mb-4 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
-        <div className="relative w-full sm:w-1/2">
-            <input
-              type="text"
-              placeholder="搜索电影 (标题, 番号, 女优, 文件名)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full p-2 pr-10 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-white"
-              >
-                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-        </div>
-
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setSortMode("time")}
-            className={`px-4 py-2 rounded-md ${sortMode === "time" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            按时间排序
-          </button>
-          <button
-            onClick={() => setSortMode("size")}
-            className={`px-4 py-2 rounded-md ${sortMode === "size" ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"}`}
-          >
-            按大小排序
-          </button>
-
-          <button
-            onClick={handleRandomPlay}
-            title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
-            className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-500"
-          >
-            随机播放
-          </button>
-        </div>
-      </div>
-
-      {/* 女优筛选器区域 */}
-      <div className={`mb-4 transition-all duration-300 ${showActressFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-xl font-semibold">女优：</h3>
-          <button
-            onClick={() => setShowActressFilters(prev => !prev)}
-            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
-          >
-            {showActressFilters ? '收起' : '展开'}
-          </button>
-        </div>
-        <div className={`flex flex-wrap items-center -mb-2 ${showActressFilters ? '' : 'overflow-hidden max-h-7'}`}>
-          {actress.map((actressData) => (
-            <button
-              key={`actress-${actressData.name}`}
-              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedActress === actressData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
-              onClick={() => {
-                if (selectedActress === actressData.name) {
-                  setSelectedActress(null);
-                  setSearchQuery("");
-                } else {
-                  setSelectedActress(actressData.name);
-                  setSelectedGenre(null);
-                  setSearchQuery(actressData.name || "");
-                }
-              }}
-            >
-              {actressData.name} ({actressData.count})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 电影类别筛选器区域 */}
-      <div className={`mb-4 transition-all duration-300 ${showGenreFilters ? 'p-4 bg-gray-800 rounded-lg shadow-md' : ''}`}>
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-xl font-semibold">类别：</h3>
-          <button
-            onClick={() => setShowGenreFilters(prev => !prev)}
-            className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
-          >
-            {showGenreFilters ? '收起' : '展开'}
-          </button>
-        </div>
-        <div className={`flex flex-wrap items-center -mb-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-7'}`}>
-          {genres.map((genreData) => (
-            <button
-              key={`genre-${genreData.name}`}
-              className={`px-3 py-1 rounded-md text-sm mr-2 mb-2 ${selectedGenre === genreData.name ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-200 text-black'}`}
-              onClick={() => {
-                if (selectedGenre === genreData.name) {
-                  setSelectedGenre(null);
-                  setSearchQuery("");
-                } else {
-                  setSelectedGenre(genreData.name);
-                  setSelectedActress(null);
-                  setSearchQuery("");
-                }
-              }}
-            >
-              {genreData.name} ({genreData.count})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 新增：重复电影展示区域 */}
-      {Object.keys(duplicateMovies).length > 0 && (
-        <div className="mb-4 p-4 bg-gray-800 rounded-lg shadow-md">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-xl font-semibold text-yellow-400">
-              重复的电影 ({Object.keys(duplicateMovies).length} 组)
-            </h3>
-            <button
-              onClick={() => setShowDuplicates(prev => !prev)}
-              className="px-2 py-1 rounded-md bg-gray-600 hover:bg-gray-500 text-gray-300 text-xs font-semibold"
-            >
-              {showDuplicates ? '收起' : '展开'}
-            </button>
-          </div>
-          {showDuplicates && (
-            <div className="mt-4 space-y-4">
-              {Object.entries(duplicateMovies).map(([code, movies]) => (
-                <div key={code} className="p-3 bg-gray-700 rounded">
-                  <h4 className="font-bold text-lg text-blue-300 mb-2">{code}</h4>
-                  <ul className="list-disc list-inside space-y-1">
-                    {movies.map(movie => (
-                      <li key={movie.absolutePath} className="text-sm text-gray-300">
-                        <span 
-                          className="cursor-pointer hover:underline hover:text-white"
-                          onClick={() => handleMovieClick(movie.absolutePath)}
-                          title={`点击播放: ${movie.filename}`}
-                        >
-                          {movie.filename}
-                        </span>
-                        <span className="text-gray-400 ml-2">({(movie.sizeInGB).toFixed(2)} GB)</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+          {/* Toolbar */}
+          <div className="mt-6 flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="relative w-full lg:max-w-xl">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
+              </span>
+              <input
+                type="text"
+                placeholder="搜索：标题 / 番号 / 女优 / 文件名"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-800/70 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-500 placeholder-slate-400"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-300 hover:text-white"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      )}
 
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSortMode("time")}
+                className={`px-4 py-2 rounded-lg border transition ${sortMode === "time" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
+              >按时间</button>
+              <button
+                onClick={() => setSortMode("size")}
+                className={`px-4 py-2 rounded-lg border transition ${sortMode === "size" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
+              >按大小</button>
+              <button
+                onClick={handleRandomPlay}
+                title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 shadow-md shadow-emerald-800/30"
+              >随机播放</button>
+            </div>
+          </div>
 
-      {loading && <p className="text-center text-xl mb-4">正在加载电影列表...</p>}
-      {error && <p className="text-center text-red-500 mb-4">错误: {error}</p>}
-
-      <div className="text-center mb-6">
-        <p className="text-lg mb-2 mt-2">总电影数: {totalMovies}</p>
-        {totalToLoad > 0 && loadedCount < totalToLoad && (
-          <p className="text-sm text-yellow-400">正在加载详情: {loadedCount} / {totalToLoad}</p>
-        )}
-        {(searchQuery || selectedActress || selectedGenre) && (
-          <p className="text-sm text-gray-400">显示 {sortedAndFilteredMovies.length} 部搜索结果</p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {sortedAndFilteredMovies.map((movie) => (
-          <MovieCardLazy 
-            key={movie.absolutePath} 
-            movie={movie} 
-            onMovieClick={handleMovieClick}
-            onLoaded={handleCardLoaded}
-            onDetailsLoaded={handleDetailsLoaded}
-            onDelete={handleDeleteMovieClick} // 传递新的删除函数
-          />
-        ))}
-      </div>
-
-      {!loading && movies.length === 0 && !error && (
-        <p className="text-center text-xl mt-8">没有找到电影文件。</p>
-      )}
-
-      {showVideoPlayer && selectedVideoPath && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
-          onClick={handleCloseVideoPlayer}
-        >
-          <div
-            className="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-7xl h-full flex flex-col items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <VideoPlayer
-              src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
-              filepath={selectedVideoPath}
-              filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
-            />
-            <button
-              onClick={handleDeleteFromPlayer}
-              disabled={isDeletingFromPlayer}
-              className={`text-white px-4 py-2 rounded-md text-sm font-semibold shadow-lg mt-4 self-end transition-all duration-200 ${
-                isDeletingFromPlayer
-                  ? 'bg-gray-500 cursor-not-allowed'
-                  : isConfirmingPlayerDelete
-                  ? 'bg-red-700 hover:bg-red-800'
-                  : 'bg-red-600 hover:bg-red-700'
-              }`}
-              style={{ zIndex: 10 }}
-            >
-              {isDeletingFromPlayer 
-                ? '删除中...'
-                : isConfirmingPlayerDelete
-                ? '确认删除？'
-                : '删除电影'}
-            </button>
+          {/* Stats */}
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <span className="px-2.5 py-1 rounded-full bg-slate-800/70 border border-slate-700 text-slate-300">总数：{totalMovies}</span>
+            {totalToLoad > 0 && loadedCount < totalToLoad && (
+              <span className="px-2.5 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-300">加载详情：{loadedCount} / {totalToLoad}</span>
+            )}
+            {(searchQuery || selectedActress || selectedGenre) && (
+              <span className="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300">结果：{sortedAndFilteredMovies.length}</span>
+            )}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Filters */}
+      <div className="max-w-7xl mx-auto px-4 mt-4 space-y-4">
+        {/* 女优筛选 */}
+        <div className={`transition-all duration-300 ${showActressFilters ? 'p-4 bg-slate-900/80 rounded-xl border border-slate-800 shadow-lg shadow-black/40' : ''}`}>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold text-slate-200">女优</h3>
+            <button
+              onClick={() => setShowActressFilters(prev => !prev)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
+            >{showActressFilters ? '收起' : '展开'}</button>
+          </div>
+          <div className={`flex flex-wrap gap-2 ${showActressFilters ? '' : 'overflow-hidden max-h-8'}`}>
+            {actress.map((a) => (
+              <button
+                key={`actress-${a.name}`}
+                className={`px-3 py-1.5 rounded-full text-xs border transition ${selectedActress === a.name ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/70 text-slate-200 hover:bg-slate-700 border-slate-700'}`}
+                onClick={() => {
+                  if (selectedActress === a.name) {
+                    setSelectedActress(null);
+                    setSearchQuery("");
+                  } else {
+                    setSelectedActress(a.name);
+                    setSelectedGenre(null);
+                    setSearchQuery(a.name || "");
+                  }
+                }}
+              >{a.name} <span className="opacity-70">({a.count})</span></button>
+            ))}
+          </div>
+        </div>
+
+        {/* 类别筛选 */}
+        <div className={`transition-all duration-300 ${showGenreFilters ? 'p-4 bg-slate-900/80 rounded-xl border border-slate-800 shadow-lg shadow-black/40' : ''}`}>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold text-slate-200">类别</h3>
+            <button
+              onClick={() => setShowGenreFilters(prev => !prev)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
+            >{showGenreFilters ? '收起' : '展开'}</button>
+          </div>
+          <div className={`flex flex-wrap gap-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-8'}`}>
+            {genres.map((g) => (
+              <button
+                key={`genre-${g.name}`}
+                className={`px-3 py-1.5 rounded-full text-xs border transition ${selectedGenre === g.name ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/70 text-slate-200 hover:bg-slate-700 border-slate-700'}`}
+                onClick={() => {
+                  if (selectedGenre === g.name) {
+                    setSelectedGenre(null);
+                    setSearchQuery("");
+                  } else {
+                    setSelectedGenre(g.name);
+                    setSelectedActress(null);
+                    setSearchQuery("");
+                  }
+                }}
+              >{g.name} <span className="opacity-70">({g.count})</span></button>
+            ))}
+          </div>
+        </div>
+
+        {/* 重复影片 */}
+        {Object.keys(duplicateMovies).length > 0 && (
+          <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold text-amber-300">重复的电影（{Object.keys(duplicateMovies).length} 组）</h3>
+              <button
+                onClick={() => setShowDuplicates(prev => !prev)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
+              >{showDuplicates ? '收起' : '展开'}</button>
+            </div>
+            {showDuplicates && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {Object.entries(duplicateMovies).map(([code, movies]) => (
+                  <div key={code} className="p-3 bg-slate-900/70 rounded-lg border border-slate-800">
+                    <h4 className="font-bold text-base text-blue-300 mb-2">{code}</h4>
+                    <ul className="space-y-1 text-sm">
+                      {movies.map(movie => (
+                        <li key={movie.absolutePath} className="flex items-center justify-between text-slate-300">
+                          <span 
+                            className="cursor-pointer hover:underline hover:text-white"
+                            onClick={() => handleMovieClick(movie.absolutePath)}
+                            title={`点击播放: ${movie.filename}`}
+                          >{movie.filename}</span>
+                          <span className="text-slate-400 ml-2">{(movie.sizeInGB).toFixed(2)} GB</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 mt-6 pb-10">
+        {loading && <p className="text-center text-base text-slate-300 mb-4">正在加载电影列表...</p>}
+        {error && <p className="text-center text-red-400 mb-4">错误: {error}</p>}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {sortedAndFilteredMovies.map((movie) => (
+            <MovieCardLazy 
+              key={movie.absolutePath} 
+              movie={movie} 
+              onMovieClick={handleMovieClick}
+              onLoaded={handleCardLoaded}
+              onDetailsLoaded={handleDetailsLoaded}
+              onDelete={handleDeleteMovieClick}
+            />
+          ))}
+        </div>
+
+        {!loading && movies.length === 0 && !error && (
+          <p className="text-center text-lg mt-10 text-slate-400">没有找到电影文件。</p>
+        )}
+
+        {showVideoPlayer && selectedVideoPath && (
+          <div
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={handleCloseVideoPlayer}
+          >
+            <div
+              className="relative bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-7xl h-full flex flex-col items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <VideoPlayer
+                src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
+                filepath={selectedVideoPath}
+                filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
+              />
+              <button
+                onClick={handleDeleteFromPlayer}
+                disabled={isDeletingFromPlayer}
+                className={`text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg mt-4 self-end transition-all duration-200 ${
+                  isDeletingFromPlayer
+                    ? 'bg-gray-600 cursor-not-allowed'
+                    : isConfirmingPlayerDelete
+                    ? 'bg-red-700 hover:bg-red-800'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+                style={{ zIndex: 10 }}
+              >
+                {isDeletingFromPlayer 
+                  ? '删除中...'
+                  : isConfirmingPlayerDelete
+                  ? '确认删除？'
+                  : '删除电影'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
