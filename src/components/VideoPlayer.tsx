@@ -394,7 +394,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleInteraction = useCallback(() => {
     // Per user's request, simulate clicking the 10s button to restore hotkey state.
-    setForwardStep(10);
+    setForwardStep(5);
   }, []);
 
   const handleProgress = useCallback(() => {

@@ -274,7 +274,7 @@ export async function fetchCoverUrl(code: string, baseUrl: string) {
     prodWithTimestamp(`[fetchCoverUrl] [DMM] 番号 ${code} 完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}, 标签数: ${kinds.length}`);
     return { coverUrl: finalCoverUrl, title, actress, kinds };
   } catch (e) {
-    prodWithTimestamp(`[fetchCoverUrl] [DMM] 处理番号 ${code} 失败: ${e}. 尝试备用源 Javbus.`);
+    prodWithTimestamp(`[fetchCoverUrl] [DMM] 处理番号 ${code} 失败: ${e}.url:${makeSearchUrl(code)} 尝试备用源 Javbus.`);
     return await fetchCoverUrlFromJavbus(code, baseUrl);
   }
 }

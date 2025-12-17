@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 时间点（秒），默认取 10s
-    const timestampSec = Math.max(0, Number.isFinite(Number(tsParam)) ? Number(tsParam) : 10);
+    const timestampSec = Math.max(0, Number.isFinite(Number(tsParam)) ? Number(tsParam) : 5);
 
     const CACHE_DIR = getImageCachePath();
     const cacheName = getThumbCacheName(videoPath, timestampSec);

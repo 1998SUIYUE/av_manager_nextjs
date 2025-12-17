@@ -15,10 +15,22 @@ type VideoPlayerClientProps = {
 
 const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
+// 将秒数格式化为 hh:mm:ss 或 mm:ss，适配 NaN/Infinity 等情况
+function formatTime(totalSeconds: number): string {
+  if (!isFinite(totalSeconds) || isNaN(totalSeconds) || totalSeconds < 0) return "00:00";
+  const sec = Math.floor(totalSeconds);
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = sec % 60;
+  const two = (n: number) => n.toString().padStart(2, "0");
+  if (hours > 0) return `${hours}:${two(minutes)}:${two(seconds)}`;
+  return `${two(minutes)}:${two(seconds)}`;
+}
+
 const VideoPlayerClient: React.FC<VideoPlayerClientProps> = ({
   src,
   filename,
-  stepSeconds = 10,
+  stepSeconds = 5,
   autoPlay = true,
   muted = false,
   loop = false,
