@@ -112,9 +112,10 @@ const MoviesLazyPage = () => {
 
   // 新增：处理子组件加载的详细信息
   const handleDetailsLoaded = useCallback((details: MovieData) => {
-    setMovies(prevMovies => 
-      prevMovies.map(movie => 
-        movie.absolutePath === details.absolutePath ? details : movie
+    // 修复：不要用详情对象覆盖原始电影对象，否则会丢失 size/modifiedAt 等用于排序的字段
+    setMovies(prevMovies =>
+      prevMovies.map(movie =>
+        movie.absolutePath === details.absolutePath ? { ...movie, ...details } : movie
       )
     );
   }, []);
@@ -279,9 +280,9 @@ const MoviesLazyPage = () => {
 
 
     if (sortMode === "time") {
-      currentMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
+      currentMovies.sort((a, b) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0));
     } else if (sortMode === "size") {
-      currentMovies.sort((a, b) => b.size - a.size);
+      currentMovies.sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
     }
     return currentMovies;
   }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]);
@@ -302,7 +303,7 @@ const MoviesLazyPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
       {/* Hero */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 opacity-30 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.35),transparent_60%)]" />
+        <div className="absolute inset-0 opacity-30 pointer-events-none -z-10 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.35),transparent_60%)]" />
         <div className="max-w-7xl mx-auto px-4 pt-10 pb-6">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300">我的影片库</span>
@@ -335,17 +336,22 @@ const MoviesLazyPage = () => {
 
             <div className="flex items-center gap-2">
               <button
+                type="button"
+                aria-pressed={sortMode === "time"}
                 onClick={() => setSortMode("time")}
-                className={`px-4 py-2 rounded-lg border transition ${sortMode === "time" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
+                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "time" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
               >按时间</button>
               <button
+                type="button"
+                aria-pressed={sortMode === "size"}
                 onClick={() => setSortMode("size")}
-                className={`px-4 py-2 rounded-lg border transition ${sortMode === "size" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
+                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "size" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
               >按大小</button>
               <button
+                type="button"
                 onClick={handleRandomPlay}
                 title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 shadow-md shadow-emerald-800/30"
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 shadow-md shadow-emerald-800/30 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
               >随机播放</button>
             </div>
           </div>
