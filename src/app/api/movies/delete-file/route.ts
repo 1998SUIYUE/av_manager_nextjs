@@ -103,16 +103,31 @@ export async function DELETE(request: Request) {
     const torrent = await findTorrentByFilePath(decodedFilePath);
 
     if (torrent) {
-      // 测试模式：找到任务，只打印日志，不删除
-      devWithTimestamp(`[API - DELETE] 文件是 qB 任务的一部分。测试模式下不删除。`);
+      // 找到匹配的 qB 任务，调用 API 删除它和对应的文件
+      devWithTimestamp(`[API - DELETE] 文件是 qB 任务的一部分。准备删除。`);
       devWithTimestamp(`[qB] 找到匹配任务: Name=${torrent.name}, Hash=${torrent.hash}`);
-      return NextResponse.json({
-        message: '找到匹配的 qB 任务，测试模式下不执行删除操作。',
-        torrentInfo: {
-          name: torrent.name,
-          hash: torrent.hash,
-        },
-      });
+
+      try {
+        const deleteResponse = await fetch(`${QB_URL}/api/v2/torrents/delete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Cookie: authCookie,
+          },
+          body: `hashes=${torrent.hash}&deleteFiles=true`,
+        });
+
+        if (deleteResponse.ok) {
+          devWithTimestamp(`[qB] 任务及文件删除成功: ${torrent.name}`);
+          return NextResponse.json({ message: 'qBittorrent 任务及对应文件删除成功' });
+        } else {
+          const errorText = await deleteResponse.text();
+          throw new Error(`qB API delete failed with status ${deleteResponse.status}: ${errorText}`);
+        }
+      } catch (e) {
+        devWithTimestamp('[API - DELETE] 调用 qB 删除 API 时发生错误:', e);
+        return NextResponse.json({ error: '调用 qB 删除 API 时发生错误' }, { status: 500 });
+      }
     }
 
     devWithTimestamp(`[API - DELETE] 文件不是 qB 任务，准备从文件系统删除。`);
