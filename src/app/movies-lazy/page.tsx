@@ -3,10 +3,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import MovieCardLazy from "@/components/MovieCardLazy";
-
 import { devWithTimestamp } from "@/utils/logger";
-
 import VideoPlayer from "@/components/VideoPlayer";
+import MovieDuel from "@/components/MovieDuel"; // 导入 MovieDuel 组件
 
 // 安全的Base64编码函数
 function safeBase64Encode(str: string): string {
@@ -19,7 +18,7 @@ function safeBase64Encode(str: string): string {
 }
 
 // 扩展电影数据接口以包含所有可能的字段
-interface MovieData {
+export interface MovieData {
   filename: string;
   path: string;
   absolutePath: string;
@@ -44,7 +43,7 @@ interface MovieData {
 
 
 // 定义排序模式的类型
-type SortMode = "time" | "size"; // 初始版本不支持按评分排序
+type SortMode = "time" | "size" | "elo";
 
 const MoviesLazyPage = () => {
   const [movies, setMovies] = useState<MovieData[]>([]);
@@ -67,7 +66,6 @@ const MoviesLazyPage = () => {
   const [duplicateMovies, setDuplicateMovies] = useState<Record<string, MovieData[]>>({});
   const [showDuplicates, setShowDuplicates] = useState<boolean>(false);
 
-
   // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
   const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
@@ -76,6 +74,9 @@ const MoviesLazyPage = () => {
   const [isConfirmingPlayerDelete, setIsConfirmingPlayerDelete] = useState(false);
   const [isDeletingFromPlayer, setIsDeletingFromPlayer] = useState(false);
   const playerDeleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 新增：对战模式状态
+  const [isDuelMode, setIsDuelMode] = useState<boolean>(false);
 
   const fetchMovies = useCallback(async () => {
     setLoading(true);
@@ -283,6 +284,8 @@ const MoviesLazyPage = () => {
       currentMovies.sort((a, b) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0));
     } else if (sortMode === "size") {
       currentMovies.sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
+    } else if (sortMode === "elo") {
+      currentMovies.sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000));
     }
     return currentMovies;
   }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]);
@@ -298,6 +301,10 @@ const MoviesLazyPage = () => {
   }, [sortedAndFilteredMovies, movies, handleMovieClick]);
 
   const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
+
+  if (isDuelMode) {
+    return <MovieDuel allMovies={movies} onExit={() => setIsDuelMode(false)} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
@@ -349,10 +356,21 @@ const MoviesLazyPage = () => {
               >按大小</button>
               <button
                 type="button"
+                aria-pressed={sortMode === "elo"}
+                onClick={() => setSortMode("elo")}
+                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "elo" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
+              >按评分</button>
+              <button
+                type="button"
                 onClick={handleRandomPlay}
                 title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
                 className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 shadow-md shadow-emerald-800/30 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
               >随机播放</button>
+              <button
+                type="button"
+                onClick={() => setIsDuelMode(true)}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 border border-purple-500/60 shadow-md shadow-purple-800/30 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
+              >影片对战</button>
             </div>
           </div>
 

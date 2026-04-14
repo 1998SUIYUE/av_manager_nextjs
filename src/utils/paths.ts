@@ -94,6 +94,11 @@ export function getMovieMetadataCachePath(): string {
   return path.join(getUserDataPath(), 'movie-metadata-cache.json');
 }
 
+// 获取电影Elo评分缓存文件路径（程序目录）
+export function getEloRatingsCachePath(): string {
+  return path.join(getUserDataPath(), 'movie-elo-ratings.json');
+}
+
 // 获取图片缓存目录路径（程序目录）
 export function getImageCachePath(): string {
   return path.join(getUserDataPath(), 'image-cache');

@@ -196,6 +196,7 @@ interface VideoPlayerProps {
   onCanPlay?: () => void;
   onProgress?: (progress: { buffered: number; duration: number }) => void;
   controls?: boolean;
+  onEnded?: () => void;
 }
 
 // 扩展HTML视频元素的类型，以处理非标准属性
@@ -231,6 +232,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onCanPlay,
   onProgress,
   controls = true,
+  onEnded,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -461,25 +463,32 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     // 事件监听器
-    const events = [
-      { name: "error", handler: handleError },
-      { name: "loadstart", handler: handleLoadStart },
-      { name: "canplay", handler: handleCanPlay },
-      { name: "progress", handler: handleProgress },
-      { name: "timeupdate", handler: updateVideoTechInfo },
-      { name: "play", handler: handleInteraction },
-      { name: "pause", handler: handleInteraction },
-      { name: "seeked", handler: handleInteraction },
-    ];
+    videoElement.addEventListener("error", handleError);
+    videoElement.addEventListener("loadstart", handleLoadStart);
+    videoElement.addEventListener("canplay", handleCanPlay);
+    videoElement.addEventListener("progress", handleProgress);
+    videoElement.addEventListener("timeupdate", updateVideoTechInfo);
+    videoElement.addEventListener("play", handleInteraction);
+    videoElement.addEventListener("pause", handleInteraction);
+    videoElement.addEventListener("seeked", handleInteraction);
 
-    events.forEach((event) => {
-      videoElement.addEventListener(event.name, event.handler);
-    });
+    if (onEnded) {
+      videoElement.addEventListener("ended", onEnded);
+    }
 
     return () => {
-      events.forEach((event) => {
-        videoElement.removeEventListener(event.name, event.handler);
-      });
+      videoElement.removeEventListener("error", handleError);
+      videoElement.removeEventListener("loadstart", handleLoadStart);
+      videoElement.removeEventListener("canplay", handleCanPlay);
+      videoElement.removeEventListener("progress", handleProgress);
+      videoElement.removeEventListener("timeupdate", updateVideoTechInfo);
+      videoElement.removeEventListener("play", handleInteraction);
+      videoElement.removeEventListener("pause", handleInteraction);
+      videoElement.removeEventListener("seeked", handleInteraction);
+      
+      if (onEnded) {
+        videoElement.removeEventListener("ended", onEnded);
+      }
     };
   }, [
     muted,
@@ -493,6 +502,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleProgress,
     updateVideoTechInfo,
     handleInteraction,
+    onEnded, // 新增依赖
   ]);
 
   // 添加键盘事件处理（只注册一次，使用 ref 读取最新步长）

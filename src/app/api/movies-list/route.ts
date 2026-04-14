@@ -136,6 +136,7 @@ async function scanMovieDirectory(directoryPath: string): Promise<MovieFile[]> {
 // ==================================
 
 import { getAllCachedMovieMetadata } from "@/lib/movieMetadataCache";
+import { getAllEloRatings } from "@/lib/eloRatingCache";
 
 export async function GET() {
   devWithTimestamp(`[movies-list] 接收到 GET 请求`);
@@ -156,29 +157,44 @@ export async function GET() {
     // 1. Scan file system to get the base list of movies
     const moviesFromDisk = await scanMovieDirectory(movieDirectory);
     
-    // 2. Get the entire metadata cache (from memory)
+    // 2. Get the entire metadata and elo caches (from memory)
     const metadataCache = await getAllCachedMovieMetadata();
+    const eloRatingsCache = await getAllEloRatings();
 
     // 3. Merge cached data into the list
     const mergedMovies = moviesFromDisk.map(movie => {
+        let mergedMovie = { ...movie };
         if (movie.code) {
+            // Merge metadata
             const cachedDetails = metadataCache.get(movie.code);
             if (cachedDetails) {
-                // Return a new object with merged properties
-                return { ...movie, ...cachedDetails };
+                // 显式处理 title，避免 null 覆盖 string
+                mergedMovie = {
+                    ...mergedMovie,
+                    ...cachedDetails,
+                    title: cachedDetails.title || mergedMovie.title,
+                };
+            }
+            // Merge Elo rating
+            const eloRating = eloRatingsCache.get(movie.code);
+            if (eloRating) {
+                mergedMovie = { ...mergedMovie, ...eloRating };
             }
         }
-        return movie; // Return original if no code or no cache hit
+        return mergedMovie;
     });
 
-    // 4. Sort the final list
-    mergedMovies.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    // 4. Filter out movies without a code
+    const moviesWithCode = mergedMovies.filter(movie => movie.code);
 
-    devWithTimestamp(`[movies-list] 返回 ${mergedMovies.length} 条混合电影数据`);
+    // 5. Sort the final list
+    moviesWithCode.sort((a, b) => b.modifiedAt - a.modifiedAt);
+
+    devWithTimestamp(`[movies-list] 返回 ${moviesWithCode.length} 条混合电影数据`);
 
     return NextResponse.json({
-      movies: mergedMovies,
-      total: mergedMovies.length,
+      movies: moviesWithCode,
+      total: moviesWithCode.length,
     });
   } catch (error) {
     devWithTimestamp("[movies-list] 获取电影列表时发生错误:", error);
