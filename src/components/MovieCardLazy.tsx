@@ -77,27 +77,6 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({ movie, onMovieClick, onLo
   const handleImageLoad = () => {};
   const handleImageError = async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget;
-    // 如果已有占位图，就不再尝试
-    if (target.src === window.location.origin + "/placeholder-image.svg") {
-      return;
-    }
-
-    // 先尝试调用后端缩略图生成接口
-    try {
-      const b64 = safeBase64Encode(movie.absolutePath);
-      const resp = await fetch(`/api/video/thumbnail?path=${b64}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data?.imageUrl) {
-          setUsedFrameThumb(true);
-          target.src = data.imageUrl;
-          return;
-        }
-      }
-    } catch (err) {
-      devWithTimestamp('[thumbnail] 抽帧回退失败', err);
-    }
-
     // 最终回退到占位图
     if (target.src !== window.location.origin + "/placeholder-image.svg") {
       target.src = "/placeholder-image.svg";
