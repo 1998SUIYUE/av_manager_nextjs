@@ -4,7 +4,7 @@ import path from 'path';
 import { devWithTimestamp } from '@/utils/logger';
 
 // TODO: 将这些凭据移动到环境变量等更安全的地方
-const BITCOMET_URL = 'http://192.168.1.4:22072';
+const BITCOMET_URL = 'http://192.168.1.3:22072';
 const BITCOMET_USERNAME = 'admin';
 const BITCOMET_PASSWORD = 'admin';
 
