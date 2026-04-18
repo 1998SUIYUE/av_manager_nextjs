@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { devWithTimestamp } from '@/utils/logger';
+import { deleteMovieMetadata, getCachedMovieMetadata } from '@/lib/movieMetadataCache';
+import { parseMovieFilename } from '@/lib/fileScanner';
+import { getImageCachePath } from '@/utils/paths';
 
 // TODO: 将这些凭据移动到环境变量等更安全的地方
 const BITCOMET_URL = 'http://192.168.31.36:22072';
@@ -12,6 +15,48 @@ interface BitCometTask {
   id: string;
   name: string;
   files: string[];
+}
+
+/**
+ * 清理电影的关联数据（元数据和封面缓存）
+ */
+async function cleanupMovieData(filePath: string) {
+  try {
+    const fileName = path.basename(filePath);
+    const parsedInfo = parseMovieFilename(fileName);
+
+    if (parsedInfo.code) {
+      const code = parsedInfo.code;
+      devWithTimestamp(`[API - DELETE] Cleaning up data for code: ${code}`);
+
+      // 1. 获取元数据以查找封面
+      const metadata = await getCachedMovieMetadata(code);
+      if (metadata && metadata.coverUrl && metadata.coverUrl.startsWith('/api/image-serve/')) {
+        // 2. 如果是本地封面，则删除
+        const coverFileName = path.basename(metadata.coverUrl);
+        const imageCacheDir = getImageCachePath();
+        const coverPath = path.join(imageCacheDir, coverFileName);
+
+        try {
+          await fs.unlink(coverPath);
+          devWithTimestamp(`[API - DELETE] Deleted cover image: ${coverPath}`);
+        } catch (imgErr: any) {
+          if (imgErr.code !== 'ENOENT') { // 文件不存在是正常情况，不用报错
+            devWithTimestamp(`[API - DELETE] Error deleting cover image ${coverPath}:`, imgErr);
+          } else {
+            devWithTimestamp(`[API - DELETE] Cover image not found, skipping delete: ${coverPath}`);
+          }
+        }
+      }
+
+      // 3. 删除元数据记录
+      await deleteMovieMetadata(code);
+      devWithTimestamp(`[API - DELETE] Deleted metadata for code: ${code}`);
+    }
+  } catch(dataErr) {
+    devWithTimestamp(`[API - DELETE] Error during associated data cleanup for ${filePath}:`, dataErr);
+    // 这个函数的失败不应该阻止主文件删除的成功响应
+  }
 }
 
 /**
@@ -39,7 +84,7 @@ async function getBitCometTaskList(): Promise<BitCometTask[]> {
     }
 
     const html = await response.text();
-    
+
     // 提取任务 ID - 从 /panel/task_detail?id=XXXX 中获取
     const taskIdRegex = /\/panel\/task_detail\?id=(\d+)/g;
     const matches = [...html.matchAll(taskIdRegex)];
@@ -147,7 +192,7 @@ async function deleteBitCometTask(taskId: string, action: 'delete_task' | 'delet
     devWithTimestamp(`[BitComet] 准备删除任务: ID=${taskId}, action=${action}`);
 
     const deleteUrl = `${BITCOMET_URL}/panel/task_delete?id=${taskId}&action=${action}`;
-    
+
     const response = await fetch(deleteUrl, {
       method: 'GET',
       headers: {
@@ -160,7 +205,7 @@ async function deleteBitCometTask(taskId: string, action: 'delete_task' | 'delet
     }
 
     const responseText = await response.text();
-    
+
     // BitComet 返回 XML 格式的响应
     // 检查是否包含成功标记
     if (responseText.includes('ok') || response.status === 200) {
@@ -204,6 +249,10 @@ export async function DELETE(request: Request) {
 
         if (deleteSuccess) {
           devWithTimestamp(`[API - DELETE] BitComet 任务及文件删除成功`);
+
+          // 在成功删除后，清理关联数据
+          await cleanupMovieData(decodedFilePath);
+
           return NextResponse.json({
             message: 'BitComet 任务及对应文件删除成功',
             task: {
@@ -241,6 +290,9 @@ export async function DELETE(request: Request) {
     // 删除文件
     await fs.unlink(decodedFilePath);
     devWithTimestamp(`[API - DELETE] 文件删除成功: ${decodedFilePath}`);
+
+    // 在成功删除后，清理关联数据
+    await cleanupMovieData(decodedFilePath);
 
     return NextResponse.json({ message: '文件删除成功' });
   } catch (error) {

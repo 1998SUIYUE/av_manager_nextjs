@@ -124,6 +124,25 @@ export async function getCachedMovieMetadata(code: string): Promise<MovieMetadat
 }
 
 /**
+ * Deletes metadata for a single movie by its code.
+ * It removes the entry from the in-memory cache and triggers a debounced write to disk.
+ */
+export async function deleteMovieMetadata(code: string): Promise<boolean> {
+  const cache = await getMemoryCache();
+  const result = cache.delete(code);
+  
+  if (result) {
+    devWithTimestamp(`[MemoryCache] Deleted metadata for code: ${code}`);
+    // Schedule a write to disk to persist the deletion.
+    scheduleDiskWrite(cache);
+  } else {
+    devWithTimestamp(`[MemoryCache] Attempted to delete non-existent metadata for code: ${code}`);
+  }
+  
+  return result;
+}
+
+/**
  * Updates metadata for a movie. It updates the in-memory cache and then
  * triggers a debounced write to disk.
  */
