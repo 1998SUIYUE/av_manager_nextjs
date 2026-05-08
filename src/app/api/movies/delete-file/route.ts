@@ -31,9 +31,9 @@ async function cleanupMovieData(filePath: string) {
 
       // 1. 获取元数据以查找封面
       const metadata = await getCachedMovieMetadata(code);
-      if (metadata && metadata.coverUrl && metadata.coverUrl.startsWith('/api/image-serve/')) {
-        // 2. 如果是本地封面，则删除
-        const coverFileName = path.basename(metadata.coverUrl);
+      const coverFileName = getCoverCacheFileName(metadata?.coverUrl || null);
+      if (coverFileName) {
+        // 2. 删除对应的本地封面缓存
         const imageCacheDir = getImageCachePath();
         const coverPath = path.join(imageCacheDir, coverFileName);
 
@@ -56,6 +56,33 @@ async function cleanupMovieData(filePath: string) {
   } catch(dataErr) {
     devWithTimestamp(`[API - DELETE] Error during associated data cleanup for ${filePath}:`, dataErr);
     // 这个函数的失败不应该阻止主文件删除的成功响应
+  }
+}
+
+function getCoverCacheFileName(coverUrl: string | null): string | null {
+  if (!coverUrl) {
+    return null;
+  }
+
+  if (coverUrl.startsWith('/api/image-serve/') || coverUrl.startsWith('/image-cache/')) {
+    return path.basename(coverUrl);
+  }
+
+  try {
+    const urlHash = Buffer.from(coverUrl)
+      .toString('base64')
+      .replace(/\//g, '_')
+      .replace(/\+/g, '-')
+      .replace(/=/g, '');
+
+    const ext = path.extname(new URL(coverUrl).pathname);
+    const extension = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext.toLowerCase())
+      ? ext
+      : '.jpg';
+
+    return `${urlHash}${extension}`;
+  } catch {
+    return null;
   }
 }
 

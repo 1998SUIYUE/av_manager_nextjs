@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "sb": "next build && next start",
-    "clean": "rimraf .next"
+    "clean": "rimraf .next",
+    "prune:remote-covers": "node scripts/prune-remote-cover-urls.js"
   },
   "dependencies": {
     "axios": "^1.7.8",
