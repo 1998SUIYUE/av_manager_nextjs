@@ -35,6 +35,10 @@ export function getMovieMetadataCachePath(): string {
   return path.join(getUserDataPath(), "movie-metadata-cache.json");
 }
 
+export function getAppDatabasePath(): string {
+  return path.join(getUserDataPath(), "app-data.sqlite");
+}
+
 export function getEloRatingsCachePath(): string {
   return path.join(getUserDataPath(), "movie-elo-ratings.json");
 }

@@ -1,11 +1,4 @@
-
-import fs from 'fs/promises';
-import { devWithTimestamp } from '@/utils/logger';
-import { getEloRatingsCachePath } from '@/utils/paths';
-
-// ==================================
-// Interfaces and Constants
-// ==================================
+import { getDatabase } from "@/lib/appDatabase";
 
 export interface EloRating {
   code: string;
@@ -17,126 +10,85 @@ export interface EloRating {
   lastRated: number;
 }
 
-const CACHE_FILE_PATH = getEloRatingsCachePath();
-const WRITE_BATCH_DELAY = 1000;
+type EloRatingRow = {
+  code: string;
+  elo: number;
+  match_count: number;
+  win_count: number;
+  loss_count: number;
+  draw_count: number;
+  last_rated: number;
+};
 
-// ==================================
-// In-Memory Cache Implementation
-// ==================================
-
-let inMemoryCache: Map<string, EloRating> | null = null;
-let isCacheLoading = false;
-
-async function getMemoryCache(): Promise<Map<string, EloRating>> {
-  if (inMemoryCache) {
-    return inMemoryCache;
-  }
-
-  if (isCacheLoading) {
-    await new Promise<void>(resolve => {
-      const interval = setInterval(() => {
-        if (!isCacheLoading) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 100);
-    });
-    return inMemoryCache!;
-  }
-
-  isCacheLoading = true;
-  try {
-    devWithTimestamp('[EloCache] Cache miss. Loading from disk...');
-    const cacheArray = await readCacheUnsafe();
-    inMemoryCache = new Map(cacheArray.map(item => [item.code, item]));
-    devWithTimestamp(`[EloCache] Loaded ${inMemoryCache.size} items into memory.`);
-    return inMemoryCache;
-  } finally {
-    isCacheLoading = false;
-  }
+function normalizeCode(code: string): string {
+  return String(code || "").trim().toUpperCase();
 }
 
-async function readCacheUnsafe(): Promise<EloRating[]> {
-  try {
-    const cacheContent = await fs.readFile(CACHE_FILE_PATH, 'utf-8');
-    return JSON.parse(cacheContent || '[]');
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    devWithTimestamp('[EloCache] Failed to read or parse cache file:', error);
-    return [];
-  }
+function toEloRating(row: EloRatingRow): EloRating {
+  return {
+    code: row.code,
+    elo: row.elo,
+    matchCount: row.match_count,
+    winCount: row.win_count,
+    lossCount: row.loss_count,
+    drawCount: row.draw_count,
+    lastRated: row.last_rated,
+  };
 }
-
-async function writeCacheToDisk(cache: Map<string, EloRating>): Promise<void> {
-    const cacheArray = Array.from(cache.values());
-    const jsonString = JSON.stringify(cacheArray, null, 2);
-    const tmpFile = CACHE_FILE_PATH + '.tmp';
-
-    try {
-        await fs.writeFile(tmpFile, jsonString, 'utf-8');
-        await fs.rename(tmpFile, CACHE_FILE_PATH);
-        devWithTimestamp(`[EloCache] Successfully wrote ${cacheArray.length} items to disk.`);
-    } catch (error) {
-        devWithTimestamp('[EloCache] Error writing cache to disk:', error);
-    }
-}
-
-// ==================================
-// Public API for the Cache
-// ==================================
 
 export async function getAllEloRatings(): Promise<Map<string, EloRating>> {
-    return await getMemoryCache();
+  const rows = getDatabase()
+    .prepare("SELECT * FROM elo_ratings ORDER BY elo DESC")
+    .all() as EloRatingRow[];
+  return new Map(rows.map((row) => [row.code, toEloRating(row)]));
 }
 
 export async function getEloRating(code: string): Promise<EloRating | null> {
-  const cache = await getMemoryCache();
-  return cache.get(code) || null;
+  const row = getDatabase()
+    .prepare("SELECT * FROM elo_ratings WHERE code = ?")
+    .get(normalizeCode(code)) as EloRatingRow | undefined;
+  return row ? toEloRating(row) : null;
 }
 
-export async function updateEloRating(
-  code: string,
-  updates: Partial<EloRating>
-) {
-    const cache = await getMemoryCache();
-    const existing = cache.get(code) || {
-        code,
-        elo: 1000,
-        matchCount: 0,
-        winCount: 0,
-        lossCount: 0,
-        drawCount: 0,
-        lastRated: 0,
-    };
+export async function updateEloRating(code: string, updates: Partial<EloRating>) {
+  const normalizedCode = normalizeCode(code);
+  const existing = (await getEloRating(normalizedCode)) || {
+    code: normalizedCode,
+    elo: 1000,
+    matchCount: 0,
+    winCount: 0,
+    lossCount: 0,
+    drawCount: 0,
+    lastRated: 0,
+  };
 
-    const updatedEntry: EloRating = {
-      ...existing,
-      ...updates,
-      lastRated: Date.now(),
-    };
+  const updatedEntry: EloRating = {
+    ...existing,
+    ...updates,
+    code: normalizedCode,
+    lastRated: Date.now(),
+  };
 
-    cache.set(code, updatedEntry);
-    scheduleDiskWrite(cache);
-}
-
-// ==================================
-// Debounced Disk Writing
-// ==================================
-
-let writeTimer: NodeJS.Timeout | null = null;
-let writeQueue: Promise<void> = Promise.resolve();
-
-function scheduleDiskWrite(cache: Map<string, EloRating>) {
-  if (writeTimer) {
-    clearTimeout(writeTimer);
-  }
-
-  writeTimer = setTimeout(() => {
-    const snapshot = new Map(cache);
-    writeQueue = writeQueue
-      .then(() => writeCacheToDisk(snapshot))
-      .catch((error) => devWithTimestamp('[EloCache] Queued write failed:', error));
-  }, WRITE_BATCH_DELAY);
+  getDatabase()
+    .prepare(`
+      INSERT INTO elo_ratings (
+        code, elo, match_count, win_count, loss_count, draw_count, last_rated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET
+        elo = excluded.elo,
+        match_count = excluded.match_count,
+        win_count = excluded.win_count,
+        loss_count = excluded.loss_count,
+        draw_count = excluded.draw_count,
+        last_rated = excluded.last_rated
+    `)
+    .run(
+      updatedEntry.code,
+      updatedEntry.elo,
+      updatedEntry.matchCount,
+      updatedEntry.winCount,
+      updatedEntry.lossCount,
+      updatedEntry.drawCount,
+      updatedEntry.lastRated
+    );
 }

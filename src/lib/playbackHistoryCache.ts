@@ -1,7 +1,5 @@
-import fs from "fs/promises";
 import path from "path";
-import { devWithTimestamp } from "@/utils/logger";
-import { getPlaybackHistoryCachePath } from "@/utils/paths";
+import { getDatabase } from "@/lib/appDatabase";
 
 export type PlaybackEventType = "start" | "progress" | "ended";
 
@@ -28,79 +26,37 @@ export interface PlaybackHistoryUpdate {
   duration?: number;
 }
 
-const CACHE_FILE_PATH = getPlaybackHistoryCachePath();
-const WRITE_BATCH_DELAY = 750;
+type PlaybackHistoryRow = {
+  absolute_path: string;
+  filename: string;
+  code: string | null;
+  current_time: number;
+  duration: number;
+  progress: number;
+  play_count: number;
+  completed_count: number;
+  first_played_at: number;
+  last_played_at: number;
+  watched: number;
+};
+
 const WATCHED_PROGRESS_THRESHOLD = 0.9;
 const WATCHED_REMAINING_SECONDS = 120;
 
-let inMemoryCache: Map<string, PlaybackHistory> | null = null;
-let isCacheLoading = false;
-let writeTimer: NodeJS.Timeout | null = null;
-let writeQueue: Promise<void> = Promise.resolve();
-
-async function ensureCacheDirectory() {
-  await fs.mkdir(path.dirname(CACHE_FILE_PATH), { recursive: true });
-}
-
-async function readCacheUnsafe(): Promise<PlaybackHistory[]> {
-  try {
-    const cacheContent = await fs.readFile(CACHE_FILE_PATH, "utf-8");
-    return JSON.parse(cacheContent || "[]");
-  } catch (error: any) {
-    if (error.code === "ENOENT") {
-      return [];
-    }
-    devWithTimestamp("[PlaybackHistory] Failed to read cache:", error);
-    return [];
-  }
-}
-
-async function getMemoryCache(): Promise<Map<string, PlaybackHistory>> {
-  if (inMemoryCache) {
-    return inMemoryCache;
-  }
-
-  if (isCacheLoading) {
-    await new Promise<void>((resolve) => {
-      const interval = setInterval(() => {
-        if (!isCacheLoading) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 50);
-    });
-    return inMemoryCache!;
-  }
-
-  isCacheLoading = true;
-  try {
-    const cacheArray = await readCacheUnsafe();
-    inMemoryCache = new Map(cacheArray.map((item) => [item.absolutePath, item]));
-    return inMemoryCache;
-  } finally {
-    isCacheLoading = false;
-  }
-}
-
-async function writeCacheToDisk(cache: Map<string, PlaybackHistory>): Promise<void> {
-  await ensureCacheDirectory();
-  const cacheArray = Array.from(cache.values()).sort((a, b) => b.lastPlayedAt - a.lastPlayedAt);
-  const tmpFile = CACHE_FILE_PATH + ".tmp";
-  await fs.writeFile(tmpFile, JSON.stringify(cacheArray, null, 2), "utf-8");
-  await fs.rename(tmpFile, CACHE_FILE_PATH);
-}
-
-function scheduleDiskWrite(cache: Map<string, PlaybackHistory>) {
-  if (writeTimer) {
-    clearTimeout(writeTimer);
-  }
-
-  writeTimer = setTimeout(() => {
-    const snapshot = new Map(cache);
-    writeQueue = writeQueue
-      .then(() => writeCacheToDisk(snapshot))
-      .catch((error) => devWithTimestamp("[PlaybackHistory] Failed to write cache:", error));
-  }, WRITE_BATCH_DELAY);
+function toPlaybackHistory(row: PlaybackHistoryRow): PlaybackHistory {
+  return {
+    absolutePath: row.absolute_path,
+    filename: row.filename,
+    code: row.code || undefined,
+    currentTime: row.current_time,
+    duration: row.duration,
+    progress: row.progress,
+    playCount: row.play_count,
+    completedCount: row.completed_count,
+    firstPlayedAt: row.first_played_at,
+    lastPlayedAt: row.last_played_at,
+    watched: row.watched === 1,
+  };
 }
 
 function normalizeFiniteSeconds(value: unknown): number {
@@ -125,19 +81,24 @@ function isWatched(currentTime: number, duration: number, progress: number): boo
 }
 
 export async function getAllPlaybackHistory(): Promise<Map<string, PlaybackHistory>> {
-  return getMemoryCache();
+  const rows = getDatabase()
+    .prepare("SELECT * FROM playback_history ORDER BY last_played_at DESC")
+    .all() as PlaybackHistoryRow[];
+  return new Map(rows.map((row) => [row.absolute_path, toPlaybackHistory(row)]));
 }
 
 export async function getPlaybackHistory(absolutePath: string): Promise<PlaybackHistory | null> {
-  const cache = await getMemoryCache();
-  return cache.get(absolutePath) || null;
+  const normalizedPath = path.resolve(absolutePath);
+  const row = getDatabase()
+    .prepare("SELECT * FROM playback_history WHERE absolute_path = ?")
+    .get(normalizedPath) as PlaybackHistoryRow | undefined;
+  return row ? toPlaybackHistory(row) : null;
 }
 
 export async function recordPlaybackHistory(update: PlaybackHistoryUpdate): Promise<PlaybackHistory> {
-  const cache = await getMemoryCache();
   const absolutePath = path.resolve(update.absolutePath);
   const now = Date.now();
-  const existing = cache.get(absolutePath);
+  const existing = await getPlaybackHistory(absolutePath);
 
   const duration = normalizeFiniteSeconds(update.duration ?? existing?.duration ?? 0);
   let currentTime = normalizeFiniteSeconds(update.currentTime ?? existing?.currentTime ?? 0);
@@ -163,7 +124,37 @@ export async function recordPlaybackHistory(update: PlaybackHistoryUpdate): Prom
     watched,
   };
 
-  cache.set(absolutePath, next);
-  scheduleDiskWrite(cache);
+  getDatabase()
+    .prepare(`
+      INSERT INTO playback_history (
+        absolute_path, filename, code, current_time, duration, progress,
+        play_count, completed_count, first_played_at, last_played_at, watched
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(absolute_path) DO UPDATE SET
+        filename = excluded.filename,
+        code = excluded.code,
+        current_time = excluded.current_time,
+        duration = excluded.duration,
+        progress = excluded.progress,
+        play_count = excluded.play_count,
+        completed_count = excluded.completed_count,
+        first_played_at = excluded.first_played_at,
+        last_played_at = excluded.last_played_at,
+        watched = excluded.watched
+    `)
+    .run(
+      next.absolutePath,
+      next.filename,
+      next.code ?? null,
+      next.currentTime,
+      next.duration,
+      next.progress,
+      next.playCount,
+      next.completedCount,
+      next.firstPlayedAt,
+      next.lastPlayedAt,
+      next.watched ? 1 : 0
+    );
+
   return next;
 }
