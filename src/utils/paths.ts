@@ -103,3 +103,7 @@ export function getEloRatingsCachePath(): string {
 export function getImageCachePath(): string {
   return path.join(getUserDataPath(), 'image-cache');
 }
+
+export function getPlaybackHistoryCachePath(): string {
+  return path.join(getUserDataPath(), 'movie-playback-history.json');
+}

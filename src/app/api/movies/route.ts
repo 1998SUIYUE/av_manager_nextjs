@@ -8,6 +8,7 @@ import {
 } from "@/lib/movieMetadataCache";
 import { writeFile, readFile } from "fs/promises";
 import { devWithTimestamp, prodWithTimestamp } from "@/utils/logger";
+import { parseMovieFilename as parseMovieFilenameShared } from "@/lib/movieCodeParser";
 import { HttpsProxyAgent } from "https-proxy-agent"; // 导入代理模块
 
 // 支持的视频文件扩展名列表
@@ -362,26 +363,7 @@ function parseMovieFilename(filename: string): {
   year?: string;
   code?: string;
 } {
-  const nameWithoutExt = path.basename(filename, path.extname(filename));
-  const matchResult = nameWithoutExt.match(/([a-zA-Z]{2,5}-\d{2,5})/i);
-  let title = nameWithoutExt;
-  let code: string | undefined;
-
-  if (matchResult) {
-    code = matchResult[1].toUpperCase();
-    if (title.toLowerCase().startsWith(code.toLowerCase())) {
-      title = title.substring(code.length).trim();
-      if (title.startsWith("-") || title.startsWith("_")) {
-        title = title.substring(1).trim();
-      }
-    }
-  }
-
-  return {
-    title: title,
-    year: (nameWithoutExt.match(/\b(19\d{2}|20\d{2})\b/) || [])[0],
-    code: code,
-  };
+  return parseMovieFilenameShared(filename);
 }
 
 async function fetchCoverUrlFromJavbus(code: string, baseUrl: string) {

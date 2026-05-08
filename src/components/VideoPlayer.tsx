@@ -24,8 +24,10 @@ interface VideoPlayerProps {
   onLoadStart?: () => void;
   onCanPlay?: () => void;
   onProgress?: (progress: { buffered: number; duration: number }) => void;
+  onPlayStart?: (progress: { currentTime: number; duration: number }) => void;
+  onTimeUpdate?: (progress: { currentTime: number; duration: number }) => void;
   controls?: boolean;
-  onEnded?: () => void;
+  onEnded?: (progress?: { currentTime: number; duration: number }) => void;
 }
 
 interface ExtendedHTMLVideoElement {
@@ -63,6 +65,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onLoadStart,
   onCanPlay,
   onProgress,
+  onPlayStart,
+  onTimeUpdate,
   controls = true,
   onEnded,
 }) => {
@@ -72,6 +76,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [forwardStep, setForwardStep] = useState(forwardSeconds);
   const forwardStepRef = useRef(forwardSeconds);
+  const lastTimeUpdateSentRef = useRef(0);
 
   useEffect(() => {
     forwardStepRef.current = forwardStep;
@@ -118,6 +123,43 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       duration,
     });
   }, [onProgress]);
+
+  const handlePlay = useCallback(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !onPlayStart) return;
+    onPlayStart({
+      currentTime: videoElement.currentTime || 0,
+      duration: Number.isFinite(videoElement.duration) ? videoElement.duration : 0,
+    });
+  }, [onPlayStart]);
+
+  const handleTimeUpdate = useCallback(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !onTimeUpdate) return;
+
+    const now = Date.now();
+    if (now - lastTimeUpdateSentRef.current < 5000) return;
+    lastTimeUpdateSentRef.current = now;
+
+    onTimeUpdate({
+      currentTime: videoElement.currentTime || 0,
+      duration: Number.isFinite(videoElement.duration) ? videoElement.duration : 0,
+    });
+  }, [onTimeUpdate]);
+
+  const handleEnded = useCallback(() => {
+    const videoElement = videoRef.current;
+    const progress = videoElement
+      ? {
+          currentTime: Number.isFinite(videoElement.duration) ? videoElement.duration : videoElement.currentTime || 0,
+          duration: Number.isFinite(videoElement.duration) ? videoElement.duration : 0,
+        }
+      : undefined;
+    if (videoElement && onTimeUpdate) {
+      onTimeUpdate(progress!);
+    }
+    onEnded?.(progress);
+  }, [onEnded, onTimeUpdate]);
 
   const openInExplorer = async () => {
     try {
@@ -169,18 +211,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     videoElement.addEventListener("loadstart", handleLoadStart);
     videoElement.addEventListener("canplay", handleCanPlay);
     videoElement.addEventListener("progress", handleProgress);
-    if (onEnded) {
-      videoElement.addEventListener("ended", onEnded);
-    }
+    videoElement.addEventListener("play", handlePlay);
+    videoElement.addEventListener("timeupdate", handleTimeUpdate);
+    videoElement.addEventListener("ended", handleEnded);
 
     return () => {
       videoElement.removeEventListener("error", handleError);
       videoElement.removeEventListener("loadstart", handleLoadStart);
       videoElement.removeEventListener("canplay", handleCanPlay);
       videoElement.removeEventListener("progress", handleProgress);
-      if (onEnded) {
-        videoElement.removeEventListener("ended", onEnded);
-      }
+      videoElement.removeEventListener("play", handlePlay);
+      videoElement.removeEventListener("timeupdate", handleTimeUpdate);
+      videoElement.removeEventListener("ended", handleEnded);
     };
   }, [
     muted,
@@ -192,7 +234,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleLoadStart,
     handleCanPlay,
     handleProgress,
-    onEnded,
+    handlePlay,
+    handleTimeUpdate,
+    handleEnded,
   ]);
 
   useEffect(() => {

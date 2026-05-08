@@ -1,0 +1,111 @@
+import fs from "fs";
+import path from "path";
+import { devWithTimestamp } from "@/utils/logger";
+import { MovieFile, scanMovieDirectory } from "@/lib/movieScanner";
+import { getMovieMetadataMap } from "@/lib/movieMetadataService";
+import { getMovieRatingMap } from "@/lib/movieRatingService";
+import { getAllPlaybackHistory } from "@/lib/playbackHistoryCache";
+
+const SCAN_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let scanCache:
+  | {
+      directory: string;
+      scannedAt: number;
+      movies: MovieFile[];
+    }
+  | null = null;
+
+const inFlightScans = new Map<string, Promise<MovieFile[]>>();
+
+function cloneExistingMovies(movies: MovieFile[]): MovieFile[] {
+  return movies
+    .filter((movie) => fs.existsSync(movie.absolutePath))
+    .map((movie) => ({ ...movie }));
+}
+
+async function getScannedMovies(directoryPath: string, forceRescan: boolean): Promise<MovieFile[]> {
+  const normalizedDirectory = path.resolve(directoryPath);
+  const cacheIsFresh =
+    scanCache &&
+    scanCache.directory === normalizedDirectory &&
+    Date.now() - scanCache.scannedAt < SCAN_CACHE_TTL_MS;
+
+  if (!forceRescan && cacheIsFresh) {
+    devWithTimestamp(`[movieLibraryService] Using scan cache: ${scanCache!.movies.length}`);
+    return cloneExistingMovies(scanCache!.movies);
+  }
+
+  const existingScan = inFlightScans.get(normalizedDirectory);
+  if (!forceRescan && existingScan) {
+    const movies = await existingScan;
+    return cloneExistingMovies(movies);
+  }
+
+  const scanPromise = scanMovieDirectory(directoryPath)
+    .then((movies) => {
+      scanCache = {
+        directory: normalizedDirectory,
+        scannedAt: Date.now(),
+        movies,
+      };
+      return movies;
+    })
+    .finally(() => {
+      inFlightScans.delete(normalizedDirectory);
+    });
+
+  inFlightScans.set(normalizedDirectory, scanPromise);
+  const movies = await scanPromise;
+  return cloneExistingMovies(movies);
+}
+
+export async function getMovieLibrary(directoryPath: string, forceRescan: boolean) {
+  const [moviesFromDisk, metadataCache, eloRatingsCache, playbackHistory] = await Promise.all([
+    getScannedMovies(directoryPath, forceRescan),
+    getMovieMetadataMap(),
+    getMovieRatingMap(),
+    getAllPlaybackHistory(),
+  ]);
+
+  const mergedMovies = moviesFromDisk
+    .filter((movie) => movie.code)
+    .map((movie) => {
+      let mergedMovie: any = { ...movie };
+
+      if (movie.code) {
+        const cachedDetails = metadataCache.get(movie.code);
+        if (cachedDetails) {
+          mergedMovie = {
+            ...mergedMovie,
+            ...cachedDetails,
+            title: cachedDetails.title || mergedMovie.title,
+          };
+        }
+
+        const eloRating = eloRatingsCache.get(movie.code);
+        if (eloRating) {
+          mergedMovie = { ...mergedMovie, ...eloRating };
+        }
+      }
+
+      const history = playbackHistory.get(movie.absolutePath);
+      if (history) {
+        mergedMovie = {
+          ...mergedMovie,
+          lastPlayedAt: history.lastPlayedAt,
+          playCount: history.playCount,
+          completedCount: history.completedCount,
+          lastPlaybackTime: history.currentTime,
+          playbackDuration: history.duration,
+          playbackProgress: history.progress,
+          watched: history.watched,
+        };
+      }
+
+      return mergedMovie;
+    })
+    .sort((a, b) => b.modifiedAt - a.modifiedAt);
+
+  return mergedMovies;
+}

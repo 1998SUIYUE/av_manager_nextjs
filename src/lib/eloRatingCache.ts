@@ -126,6 +126,7 @@ export async function updateEloRating(
 // ==================================
 
 let writeTimer: NodeJS.Timeout | null = null;
+let writeQueue: Promise<void> = Promise.resolve();
 
 function scheduleDiskWrite(cache: Map<string, EloRating>) {
   if (writeTimer) {
@@ -133,6 +134,9 @@ function scheduleDiskWrite(cache: Map<string, EloRating>) {
   }
 
   writeTimer = setTimeout(() => {
-    writeCacheToDisk(new Map(cache));
+    const snapshot = new Map(cache);
+    writeQueue = writeQueue
+      .then(() => writeCacheToDisk(snapshot))
+      .catch((error) => devWithTimestamp('[EloCache] Queued write failed:', error));
   }, WRITE_BATCH_DELAY);
 }

@@ -37,10 +37,18 @@ export interface MovieData {
   drawCount?: number;
   lossCount?: number;
   winRate?: number;
+  lastPlayedAt?: number;
+  playCount?: number;
+  completedCount?: number;
+  lastPlaybackTime?: number;
+  playbackDuration?: number;
+  playbackProgress?: number;
+  watched?: boolean;
 }
 
 type SortMode = "time" | "size" | "elo";
 type SortDirection = "desc" | "asc";
+const VISIBLE_BATCH_SIZE = 80;
 
 const sortOptions: Array<{ value: SortMode; label: string; hint: string }> = [
   { value: "time", label: "时间", hint: "按修改时间" },
@@ -62,6 +70,7 @@ const MoviesLazyPage = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [totalMovies, setTotalMovies] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH_SIZE);
   const [isSortPending, startSortTransition] = useTransition();
 
   const [actress, setActress] = useState<{ name: string; count: number }[]>([]);
@@ -80,6 +89,7 @@ const MoviesLazyPage = () => {
   const [isConfirmingPlayerDelete, setIsConfirmingPlayerDelete] = useState(false);
   const [isDeletingFromPlayer, setIsDeletingFromPlayer] = useState(false);
   const playerDeleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const playbackStartRecordedRef = useRef(false);
 
   const [isDuelMode, setIsDuelMode] = useState<boolean>(false);
 
@@ -171,6 +181,7 @@ const MoviesLazyPage = () => {
   }, [movies]);
 
   const handleMovieClick = useCallback((absolutePath: string) => {
+    playbackStartRecordedRef.current = false;
     setSelectedVideoPath(absolutePath);
     setShowVideoPlayer(true);
   }, []);
@@ -180,6 +191,7 @@ const MoviesLazyPage = () => {
     setShowVideoPlayer(false);
     setIsConfirmingPlayerDelete(false);
     setIsDeletingFromPlayer(false);
+    playbackStartRecordedRef.current = false;
     if (playerDeleteConfirmTimeoutRef.current) {
       clearTimeout(playerDeleteConfirmTimeoutRef.current);
     }
@@ -288,12 +300,41 @@ const MoviesLazyPage = () => {
     return currentMovies;
   }, [movies, sortMode, sortDirection, searchQuery, selectedActress, selectedGenre]);
 
+  useEffect(() => {
+    setVisibleCount(VISIBLE_BATCH_SIZE);
+  }, [sortMode, sortDirection, searchQuery, selectedActress, selectedGenre]);
+
+  const visibleMovies = useMemo(
+    () => sortedAndFilteredMovies.slice(0, visibleCount),
+    [sortedAndFilteredMovies, visibleCount]
+  );
+
+  const selectedMovie = useMemo(
+    () => movies.find((movie) => movie.absolutePath === selectedVideoPath),
+    [movies, selectedVideoPath]
+  );
+
+  const resumeSeconds = useMemo(() => {
+    if (!selectedMovie || selectedMovie.watched) return undefined;
+    const time = selectedMovie.lastPlaybackTime || 0;
+    const progress = selectedMovie.playbackProgress || 0;
+    return time > 10 && progress < 0.95 ? time : undefined;
+  }, [selectedMovie]);
+
   const totalToLoad = useMemo(() => movies.filter((m) => m.code).length, [movies]);
   const duplicateGroupCount = Object.keys(duplicateMovies).length;
   const totalSize = useMemo(() => movies.reduce((sum, movie) => sum + (movie.sizeInGB || 0), 0), [movies]);
   const ratedCount = useMemo(() => movies.filter((movie) => (movie.matchCount || 0) > 0).length, [movies]);
   const topMovie = useMemo(
     () => [...movies].sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000))[0],
+    [movies]
+  );
+  const recentPlayedMovies = useMemo(
+    () =>
+      movies
+        .filter((movie) => movie.lastPlayedAt)
+        .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))
+        .slice(0, 8),
     [movies]
   );
 
@@ -308,6 +349,56 @@ const MoviesLazyPage = () => {
     const randomIndex = Math.floor(Math.random() * pool.length);
     handleMovieClick(pool[randomIndex].absolutePath);
   }, [sortedAndFilteredMovies, movies, handleMovieClick]);
+
+  const recordPlaybackEvent = useCallback(
+    async (
+      event: "start" | "progress" | "ended",
+      progress?: { currentTime: number; duration: number }
+    ) => {
+      if (!selectedMovie) return;
+
+      try {
+        const response = await fetch("/api/playback-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event,
+            absolutePath: selectedMovie.absolutePath,
+            filename: selectedMovie.filename,
+            code: selectedMovie.code,
+            currentTime: progress?.currentTime,
+            duration: progress?.duration,
+          }),
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const history = data.history;
+        if (!history) return;
+
+        setMovies((prevMovies) =>
+          prevMovies.map((movie) =>
+            movie.absolutePath === selectedMovie.absolutePath
+              ? {
+                  ...movie,
+                  lastPlayedAt: history.lastPlayedAt,
+                  playCount: history.playCount,
+                  completedCount: history.completedCount,
+                  lastPlaybackTime: history.currentTime,
+                  playbackDuration: history.duration,
+                  playbackProgress: history.progress,
+                  watched: history.watched,
+                }
+              : movie
+          )
+        );
+      } catch (error) {
+        devWithTimestamp("[playback-history] Failed to record playback:", error);
+      }
+    },
+    [selectedMovie]
+  );
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -559,6 +650,35 @@ const MoviesLazyPage = () => {
                 )}
               </section>
             )}
+
+            {recentPlayedMovies.length > 0 && (
+              <section className="border border-[#3e392d] bg-[#211e18]/86">
+                <div className="border-b border-[#3e392d] px-4 py-3">
+                  <div className="text-sm font-black text-[#fff8e7]">最近播放</div>
+                  <div className="text-xs text-[#8f846f]">点击影片可从上次进度继续</div>
+                </div>
+                <div className="max-h-[420px] space-y-2 overflow-auto p-3">
+                  {recentPlayedMovies.map((movie) => (
+                    <button
+                      key={movie.absolutePath}
+                      type="button"
+                      onClick={() => handleMovieClick(movie.absolutePath)}
+                      className="block w-full border border-[#3e392d] bg-[#15130f] p-3 text-left transition hover:border-[#d79b43]"
+                    >
+                      <span className="block truncate text-xs font-black text-[#fff8e7]">
+                        {movie.code || movie.filename}
+                      </span>
+                      <span className="mt-1 block truncate text-[11px] text-[#a99f8d]">
+                        {movie.watched
+                          ? "已看过"
+                          : `进度 ${Math.round((movie.playbackProgress || 0) * 100)}%`}
+                        {movie.playCount ? ` · 播放 ${movie.playCount} 次` : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
           </aside>
 
           <section className="min-w-0">
@@ -598,7 +718,7 @@ const MoviesLazyPage = () => {
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {sortedAndFilteredMovies.map((movie) => (
+              {visibleMovies.map((movie) => (
                 <MovieCardLazy
                   key={movie.absolutePath}
                   movie={movie}
@@ -609,6 +729,18 @@ const MoviesLazyPage = () => {
                 />
               ))}
             </div>
+
+            {!loading && visibleCount < sortedAndFilteredMovies.length && (
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((count) => count + VISIBLE_BATCH_SIZE)}
+                  className="border border-[#4a4334] bg-[#211e18] px-5 py-3 text-sm font-black text-[#f7f0df] transition hover:border-[#d79b43] hover:bg-[#2a261d]"
+                >
+                  加载更多（{Math.min(visibleCount, sortedAndFilteredMovies.length)} / {sortedAndFilteredMovies.length}）
+                </button>
+              </div>
+            )}
 
             {!loading && movies.length === 0 && !error && (
               <div className="mt-8 border border-[#3e392d] bg-[#211e18]/80 p-8 text-center">
@@ -672,7 +804,15 @@ const MoviesLazyPage = () => {
               <VideoPlayer
                 src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
                 filepath={selectedVideoPath}
-                filename={movies.find((m) => m.absolutePath === selectedVideoPath)?.filename}
+                filename={selectedMovie?.filename}
+                seekSeconds={resumeSeconds}
+                onPlayStart={(progress) => {
+                  if (playbackStartRecordedRef.current) return;
+                  playbackStartRecordedRef.current = true;
+                  recordPlaybackEvent("start", progress);
+                }}
+                onTimeUpdate={(progress) => recordPlaybackEvent("progress", progress)}
+                onEnded={(progress) => recordPlaybackEvent("ended", progress)}
               />
             </div>
           </div>

@@ -16,6 +16,13 @@ interface BaseMovieData {
   year?: string;
   modifiedAt: number;
   code?: string;
+  lastPlayedAt?: number;
+  playCount?: number;
+  completedCount?: number;
+  lastPlaybackTime?: number;
+  playbackDuration?: number;
+  playbackProgress?: number;
+  watched?: boolean;
 }
 
 interface MovieDetails extends BaseMovieData {
@@ -170,6 +177,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
 
   const title = details ? details.displayTitle || details.title : movie.title || movie.filename;
   const matchCount = details?.matchCount || 0;
+  const playbackProgress = movie.playbackProgress || 0;
+  const playCount = movie.playCount || 0;
   const winRate =
     details?.winRate !== undefined
       ? details.winRate
@@ -247,6 +256,9 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
+          {movie.watched && <Tag label="已看过" tone="green" />}
+          {!movie.watched && playbackProgress > 0.02 && <Tag label={`看到 ${(playbackProgress * 100).toFixed(0)}%`} tone="green" />}
+          {playCount > 0 && <Tag label={`播放 ${playCount} 次`} tone="neutral" />}
           {details?.actress && <Tag label={details.actress} tone="rose" />}
           {movie.year && <Tag label={movie.year} tone="green" />}
           {details?.kinds?.slice(0, 2).map((kind) => <Tag key={kind} label={kind} tone="neutral" />)}
@@ -264,6 +276,18 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
           <InfoCell label="评分" value={`${details?.elo ?? 1000}`} />
           <InfoCell label="对战" value={matchCount ? `${matchCount} 场` : "未开始"} />
         </div>
+
+        {playbackProgress > 0.02 && (
+          <div className="border border-[#3e392d] bg-[#15130f] p-2">
+            <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-[#a99f8d]">
+              <span>{movie.watched ? "已看过" : "播放进度"}</span>
+              <span>{Math.round(playbackProgress * 100)}%</span>
+            </div>
+            <div className="h-1.5 bg-[#2a261d]">
+              <div className="h-full bg-[#4fa58b]" style={{ width: `${Math.min(playbackProgress * 100, 100)}%` }} />
+            </div>
+          </div>
+        )}
 
         {matchCount > 0 && (
           <div className="border border-[#3e392d] bg-[#15130f] p-2 text-xs text-[#c8bdab]">
