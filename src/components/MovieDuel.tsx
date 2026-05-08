@@ -10,6 +10,9 @@ interface MovieDuelProps {
   onExit: () => void;
 }
 
+const RECENT_PAIR_LIMIT = 30;
+const ELO_WINDOWS = [150, 250, 400, Infinity];
+
 function safeBase64Encode(str: string): string {
   try {
     return btoa(encodeURIComponent(str));
@@ -18,13 +21,111 @@ function safeBase64Encode(str: string): string {
   }
 }
 
+function getRating(movie: MovieData, ratings: Map<string, EloRating>): EloRating {
+  const code = movie.code || "";
+  return (
+    ratings.get(code) || {
+      code,
+      elo: movie.elo || 1000,
+      matchCount: movie.matchCount || 0,
+      winCount: movie.winCount || 0,
+      lossCount: movie.lossCount || 0,
+      drawCount: movie.drawCount || 0,
+      lastRated: 0,
+    }
+  );
+}
+
+function pairKey(codeA: string, codeB: string): string {
+  return [codeA, codeB].sort().join("|");
+}
+
+function uniqueMoviesByCode(movies: MovieData[]): MovieData[] {
+  const seen = new Set<string>();
+  const unique: MovieData[] = [];
+
+  for (const movie of movies) {
+    if (!movie.code || seen.has(movie.code)) continue;
+    seen.add(movie.code);
+    unique.push(movie);
+  }
+
+  return unique;
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
   const [leftMovie, setLeftMovie] = useState<MovieData | null>(null);
   const [rightMovie, setRightMovie] = useState<MovieData | null>(null);
   const [eloRatings, setEloRatings] = useState<Map<string, EloRating>>(new Map());
-  const [isPlayingLeft, setIsPlayingLeft] = useState<boolean>(false);
-  const [isPlayingRight, setIsPlayingRight] = useState<boolean>(false);
+  const [isPlayingLeft, setIsPlayingLeft] = useState(false);
+  const [isPlayingRight, setIsPlayingRight] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const recentPairsRef = useRef<string[]>([]);
   const isInitialDuelSelected = useRef(false);
+
+  const selectNewDuel = useCallback(
+    (ratings: Map<string, EloRating> = eloRatings, recentPairs: string[] = recentPairsRef.current) => {
+      const validMovies = uniqueMoviesByCode(allMovies);
+
+      if (validMovies.length < 2) {
+        alert("可参与对战的影片不足两部");
+        onExit();
+        return;
+      }
+
+      let minMatchCount = Infinity;
+      for (const movie of validMovies) {
+        const count = getRating(movie, ratings).matchCount || 0;
+        if (count < minMatchCount) minMatchCount = count;
+      }
+
+      const primaryPool = validMovies.filter((movie) => (getRating(movie, ratings).matchCount || 0) === minMatchCount);
+      const firstMovie = pickRandom(primaryPool.length > 0 ? primaryPool : validMovies);
+      const firstRating = getRating(firstMovie, ratings);
+
+      let secondPool: MovieData[] = [];
+      for (const windowSize of ELO_WINDOWS) {
+        secondPool = validMovies.filter((movie) => {
+          if (!movie.code || movie.code === firstMovie.code) return false;
+          const rating = getRating(movie, ratings);
+          const sameRecentPair = recentPairs.includes(pairKey(firstMovie.code!, movie.code));
+          return Math.abs((rating.elo || 1000) - (firstRating.elo || 1000)) <= windowSize && !sameRecentPair;
+        });
+        if (secondPool.length > 0) break;
+      }
+
+      if (secondPool.length === 0) {
+        secondPool = validMovies.filter((movie) => movie.code && movie.code !== firstMovie.code);
+      }
+
+      const sortedSecondPool = [...secondPool].sort((a, b) => {
+        const ratingA = getRating(a, ratings);
+        const ratingB = getRating(b, ratings);
+        const countDiff = (ratingA.matchCount || 0) - (ratingB.matchCount || 0);
+        if (countDiff !== 0) return countDiff;
+        return Math.abs((ratingA.elo || 1000) - (firstRating.elo || 1000)) - Math.abs((ratingB.elo || 1000) - (firstRating.elo || 1000));
+      });
+
+      const shortlist = sortedSecondPool.slice(0, Math.min(8, sortedSecondPool.length));
+      const secondMovie = pickRandom(shortlist);
+
+      if (Math.random() > 0.5) {
+        setLeftMovie(firstMovie);
+        setRightMovie(secondMovie);
+      } else {
+        setLeftMovie(secondMovie);
+        setRightMovie(firstMovie);
+      }
+
+      setIsPlayingLeft(false);
+      setIsPlayingRight(false);
+    },
+    [allMovies, eloRatings, onExit]
+  );
 
   useEffect(() => {
     const fetchEloRatings = async () => {
@@ -32,68 +133,46 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         const response = await fetch("/api/elo-ratings");
         if (!response.ok) throw new Error("无法读取 Elo 评分");
         const ratingsArray: EloRating[] = await response.json();
-        setEloRatings(new Map(ratingsArray.map((r: EloRating) => [r.code, r])));
+        const ratingsMap = new Map(ratingsArray.map((rating) => [rating.code, rating]));
+        setEloRatings(ratingsMap);
+        if (!isInitialDuelSelected.current && allMovies.length > 0) {
+          selectNewDuel(ratingsMap);
+          isInitialDuelSelected.current = true;
+        }
       } catch (error) {
         console.error("加载 Elo 评分失败:", error);
         setEloRatings(new Map());
       }
     };
     fetchEloRatings();
-  }, []);
-
-  const selectNewDuel = useCallback(() => {
-    const validMovies = allMovies.filter((movie) => movie.code);
-
-    if (validMovies.length < 2) {
-      alert("可参与对战的影片不足两部");
-      onExit();
-      return;
-    }
-
-    let minMatchCount = Infinity;
-    for (const movie of validMovies) {
-      const count = eloRatings.get(movie.code!)?.matchCount || 0;
-      if (count < minMatchCount) {
-        minMatchCount = count;
-      }
-    }
-
-    let leastRatedPool = validMovies.filter(
-      (movie) => (eloRatings.get(movie.code!)?.matchCount || 0) === minMatchCount
-    );
-
-    if (leastRatedPool.length < 2) {
-      leastRatedPool = validMovies;
-      if (leastRatedPool.length < 2) {
-        alert("可参与对战的影片不足两部");
-        onExit();
-        return;
-      }
-    }
-
-    let index1 = Math.floor(Math.random() * leastRatedPool.length);
-    let index2 = Math.floor(Math.random() * (leastRatedPool.length - 1));
-    if (index2 >= index1) {
-      index2++;
-    }
-
-    setLeftMovie(leastRatedPool[index1]);
-    setRightMovie(leastRatedPool[index2]);
-    setIsPlayingLeft(false);
-    setIsPlayingRight(false);
-  }, [allMovies, eloRatings, onExit]);
+  }, [allMovies.length]);
 
   useEffect(() => {
     if (allMovies.length > 0 && !isInitialDuelSelected.current) {
       selectNewDuel();
       isInitialDuelSelected.current = true;
     }
-  }, [allMovies, selectNewDuel]);
+  }, [allMovies.length, selectNewDuel]);
+
+  const rememberPairAndSelectNext = useCallback(
+    (ratings: Map<string, EloRating>) => {
+      if (leftMovie?.code && rightMovie?.code) {
+        recentPairsRef.current = [pairKey(leftMovie.code, rightMovie.code), ...recentPairsRef.current].slice(0, RECENT_PAIR_LIMIT);
+      }
+      selectNewDuel(ratings, recentPairsRef.current);
+    },
+    [leftMovie?.code, rightMovie?.code, selectNewDuel]
+  );
 
   const handleRating = useCallback(
     async (winner: "left" | "right" | "draw") => {
-      if (!leftMovie?.code || !rightMovie?.code) return;
+      if (!leftMovie?.code || !rightMovie?.code || isSubmitting) return;
+      if (leftMovie.code === rightMovie.code) {
+        selectNewDuel();
+        return;
+      }
 
+      setIsSubmitting(true);
       const resultString: "winA" | "winB" | "draw" =
         winner === "left" ? "winA" : winner === "right" ? "winB" : "draw";
 
@@ -114,26 +193,32 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         }
 
         const { updatedRatingA, updatedRatingB } = await response.json();
+        const nextRatings = new Map(eloRatings);
+        nextRatings.set(updatedRatingA.code, updatedRatingA);
+        nextRatings.set(updatedRatingB.code, updatedRatingB);
 
-        setEloRatings((prev) => {
-          const newRatings = new Map(prev);
-          newRatings.set(updatedRatingA.code, updatedRatingA);
-          newRatings.set(updatedRatingB.code, updatedRatingB);
-          return newRatings;
-        });
-
-        selectNewDuel();
+        setEloRatings(nextRatings);
+        rememberPairAndSelectNext(nextRatings);
       } catch (error) {
         console.error("更新 Elo 评分失败:", error);
         alert(`更新评分失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIsSubmitting(false);
       }
     },
-    [leftMovie, rightMovie, selectNewDuel]
+    [leftMovie, rightMovie, isSubmitting, eloRatings, rememberPairAndSelectNext, selectNewDuel]
   );
+
+  const handleSkip = useCallback(() => {
+    if (isSubmitting) return;
+    rememberPairAndSelectNext(eloRatings);
+  }, [eloRatings, isSubmitting, rememberPairAndSelectNext]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (isSubmitting || isPlayingLeft || isPlayingRight) return;
+
       switch (event.code) {
         case "KeyA":
           handleRating("left");
@@ -145,18 +230,19 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
           event.preventDefault();
           handleRating("draw");
           break;
+        case "KeyS":
+          handleSkip();
+          break;
         default:
           break;
       }
     },
-    [handleRating]
+    [handleRating, handleSkip, isPlayingLeft, isPlayingRight, isSubmitting]
   );
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
   const renderMovie = (movie: MovieData | null, side: "left" | "right") => {
@@ -165,7 +251,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     }
 
     const isPlaying = side === "left" ? isPlayingLeft : isPlayingRight;
-    const rating = movie.code ? eloRatings.get(movie.code) : undefined;
+    const rating = getRating(movie, eloRatings);
     const setPlaying = side === "left" ? setIsPlayingLeft : setIsPlayingRight;
 
     if (isPlaying) {
@@ -193,7 +279,9 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4">
             <div className="text-xs font-bold text-[#e7bd67]">{side === "left" ? "A 选择左侧" : "D 选择右侧"}</div>
             <div className="mt-1 truncate text-lg font-black text-white">{movie.code || movie.filename}</div>
-            <div className="mt-1 text-sm text-[#d9cbb4]">Elo {rating?.elo || movie.elo || 1000}</div>
+            <div className="mt-1 text-sm text-[#d9cbb4]">
+              Elo {rating.elo || 1000} · {rating.matchCount || 0} 场
+            </div>
           </div>
         </div>
       </button>
@@ -208,12 +296,15 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">偏好评分</div>
             <h1 className="mt-1 text-2xl font-black text-[#fff8e7]">影片对战</h1>
-            <p className="mt-1 text-sm text-[#b8af9d]">点击封面可预览，选择更喜欢的一侧会自动进入下一轮。</p>
+            <p className="mt-1 text-sm text-[#b8af9d]">
+              优先补齐低场次影片，并尽量匹配 Elo 接近、近期没打过的对手。
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <KeyHint k="A" label="左侧胜" />
             <KeyHint k="D" label="右侧胜" />
             <KeyHint k="空格" label="平局" />
+            <KeyHint k="S" label="跳过" />
             <button
               type="button"
               onClick={onExit}
@@ -227,27 +318,18 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         <section className="grid flex-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
           <div>{renderMovie(leftMovie, "left")}</div>
           <div className="flex flex-col items-stretch gap-2 lg:w-32">
-            <button
-              type="button"
-              onClick={() => handleRating("left")}
-              className="border border-[#d79b43] bg-[#d79b43] px-4 py-3 text-sm font-black text-[#1e160b] transition hover:bg-[#efb85d]"
-            >
+            <DuelButton disabled={isSubmitting} onClick={() => handleRating("left")} tone="gold">
               左侧胜
-            </button>
-            <button
-              type="button"
-              onClick={() => handleRating("draw")}
-              className="border border-[#4a4334] bg-[#211e18] px-4 py-3 text-sm font-black text-[#f7f0df] transition hover:bg-[#2a261d]"
-            >
+            </DuelButton>
+            <DuelButton disabled={isSubmitting} onClick={() => handleRating("draw")} tone="neutral">
               平局
-            </button>
-            <button
-              type="button"
-              onClick={() => handleRating("right")}
-              className="border border-[#4fa58b] bg-[#214f45] px-4 py-3 text-sm font-black text-[#dffbf0] transition hover:bg-[#2c6759]"
-            >
+            </DuelButton>
+            <DuelButton disabled={isSubmitting} onClick={() => handleRating("right")} tone="green">
               右侧胜
-            </button>
+            </DuelButton>
+            <DuelButton disabled={isSubmitting} onClick={handleSkip} tone="neutral">
+              跳过
+            </DuelButton>
           </div>
           <div>{renderMovie(rightMovie, "right")}</div>
         </section>
@@ -255,6 +337,36 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     </main>
   );
 };
+
+function DuelButton({
+  children,
+  disabled,
+  onClick,
+  tone,
+}: {
+  children: React.ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+  tone: "gold" | "green" | "neutral";
+}) {
+  const toneClass =
+    tone === "gold"
+      ? "border-[#d79b43] bg-[#d79b43] text-[#1e160b] hover:bg-[#efb85d]"
+      : tone === "green"
+      ? "border-[#4fa58b] bg-[#214f45] text-[#dffbf0] hover:bg-[#2c6759]"
+      : "border-[#4a4334] bg-[#211e18] text-[#f7f0df] hover:bg-[#2a261d]";
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`border px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 function KeyHint({ k, label }: { k: string; label: string }) {
   return (
