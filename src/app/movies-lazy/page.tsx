@@ -353,15 +353,6 @@ const MoviesLazyPage = () => {
     () => [...movies].sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000))[0],
     [movies]
   );
-  const recentPlayedMovies = useMemo(
-    () =>
-      movies
-        .filter((movie) => movie.lastPlayedAt)
-        .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))
-        .slice(0, 8),
-    [movies]
-  );
-
   const activeFilterCount = [searchQuery, selectedActress, selectedGenre].filter(Boolean).length;
 
   const handleRandomPlay = useCallback(() => {
@@ -461,9 +452,59 @@ const MoviesLazyPage = () => {
                   <Metric label="影片" value={totalMovies.toString()} />
                   <Metric label="容量" value={formatTotalSize(totalSize)} />
                   <Metric label="已评分" value={ratedCount.toString()} />
-                  <Metric label="重复组" value={duplicateGroupCount.toString()} tone={duplicateGroupCount ? "warn" : "normal"} />
+                  <Metric
+                    label="重复组"
+                    value={duplicateGroupCount.toString()}
+                    tone={duplicateGroupCount ? "warn" : "normal"}
+                    active={showDuplicates}
+                    disabled={duplicateGroupCount === 0}
+                    onClick={() => setShowDuplicates((prev) => !prev)}
+                  />
                 </div>
               </div>
+
+              {showDuplicates && duplicateGroupCount > 0 && (
+                <section className="mt-5 border border-[#6b4b2b] bg-[#241b12]/92">
+                  <div className="flex items-center justify-between border-b border-[#4a3926] px-4 py-3">
+                    <div>
+                      <div className="text-sm font-black text-[#f0bd73]">重复影片</div>
+                      <div className="text-xs text-[#b8af9d]">{duplicateGroupCount} 组番号重复</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowDuplicates(false)}
+                      className="border border-[#5d5138] px-3 py-1 text-xs font-bold text-[#e7bd67] hover:border-[#d79b43] hover:bg-[#2a261d]"
+                    >
+                      收起
+                    </button>
+                  </div>
+
+                  <div className="grid max-h-[360px] gap-3 overflow-auto p-3 md:grid-cols-2 2xl:grid-cols-3">
+                    {Object.entries(duplicateMovies).map(([code, group]) => (
+                      <div key={code} className="border border-[#3e392d] bg-[#15130f] p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="font-black text-[#fff8e7]">{code}</span>
+                          <span className="text-xs text-[#d5a85d]">{group.length} 部</span>
+                        </div>
+                        <div className="space-y-2">
+                          {group.map((movie) => (
+                            <button
+                              key={movie.absolutePath}
+                              type="button"
+                              onClick={() => handleMovieClick(movie.absolutePath)}
+                              title={`点击播放：${movie.filename}`}
+                              className="block w-full text-left text-xs leading-5 text-[#c8bdab] hover:text-[#fff8e7]"
+                            >
+                              <span className="line-clamp-2">{movie.filename}</span>
+                              <span className="text-[#8f846f]">{movie.sizeInGB.toFixed(2)} GB</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
             </section>
 
             <section className="p-5 sm:p-6">
@@ -586,125 +627,7 @@ const MoviesLazyPage = () => {
           </div>
         </section>
 
-        <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-          <aside className="space-y-4">
-            <FilterPanel
-              title="演员"
-              subtitle={`${actress.length} 位`}
-              expanded={showActressFilters}
-              onToggle={() => setShowActressFilters((prev) => !prev)}
-            >
-              <ChipCloud
-                items={actress}
-                selected={selectedActress}
-                onSelect={(name) => {
-                  if (selectedActress === name) {
-                    setSelectedActress(null);
-                    setSearchQuery("");
-                  } else {
-                    setSelectedActress(name);
-                    setSelectedGenre(null);
-                    setSearchQuery(name || "");
-                  }
-                }}
-              />
-            </FilterPanel>
-
-            <FilterPanel
-              title="类型"
-              subtitle={`${genres.length} 类`}
-              expanded={showGenreFilters}
-              onToggle={() => setShowGenreFilters((prev) => !prev)}
-            >
-              <ChipCloud
-                items={genres}
-                selected={selectedGenre}
-                onSelect={(name) => {
-                  if (selectedGenre === name) {
-                    setSelectedGenre(null);
-                    setSearchQuery("");
-                  } else {
-                    setSelectedGenre(name);
-                    setSelectedActress(null);
-                    setSearchQuery("");
-                  }
-                }}
-              />
-            </FilterPanel>
-
-            {duplicateGroupCount > 0 && (
-              <section className="border border-[#6b4b2b] bg-[#241b12]/92">
-                <button
-                  type="button"
-                  onClick={() => setShowDuplicates((prev) => !prev)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <span>
-                    <span className="block text-sm font-black text-[#f0bd73]">重复影片</span>
-                    <span className="text-xs text-[#b8af9d]">{duplicateGroupCount} 组番号重复</span>
-                  </span>
-                  <span className="text-sm font-bold text-[#e7bd67]">{showDuplicates ? "收起" : "展开"}</span>
-                </button>
-
-                {showDuplicates && (
-                  <div className="max-h-[420px] space-y-3 overflow-auto border-t border-[#4a3926] p-3">
-                    {Object.entries(duplicateMovies).map(([code, group]) => (
-                      <div key={code} className="border border-[#3e392d] bg-[#15130f] p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="font-black text-[#fff8e7]">{code}</span>
-                          <span className="text-xs text-[#d5a85d]">{group.length} 部</span>
-                        </div>
-                        <div className="space-y-2">
-                          {group.map((movie) => (
-                            <button
-                              key={movie.absolutePath}
-                              type="button"
-                              onClick={() => handleMovieClick(movie.absolutePath)}
-                              title={`点击播放：${movie.filename}`}
-                              className="block w-full text-left text-xs leading-5 text-[#c8bdab] hover:text-[#fff8e7]"
-                            >
-                              <span className="line-clamp-2">{movie.filename}</span>
-                              <span className="text-[#8f846f]">{movie.sizeInGB.toFixed(2)} GB</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {recentPlayedMovies.length > 0 && (
-              <section className="border border-[#3e392d] bg-[#211e18]/86">
-                <div className="border-b border-[#3e392d] px-4 py-3">
-                  <div className="text-sm font-black text-[#fff8e7]">最近播放</div>
-                  <div className="text-xs text-[#8f846f]">点击影片可从上次进度继续</div>
-                </div>
-                <div className="max-h-[420px] space-y-2 overflow-auto p-3">
-                  {recentPlayedMovies.map((movie) => (
-                    <button
-                      key={movie.absolutePath}
-                      type="button"
-                      onClick={() => handleMovieClick(movie.absolutePath)}
-                      className="block w-full border border-[#3e392d] bg-[#15130f] p-3 text-left transition hover:border-[#d79b43]"
-                    >
-                      <span className="block truncate text-xs font-black text-[#fff8e7]">
-                        {movie.code || movie.filename}
-                      </span>
-                      <span className="mt-1 block truncate text-[11px] text-[#a99f8d]">
-                        {movie.watched
-                          ? "已看过"
-                          : `进度 ${Math.round((movie.playbackProgress || 0) * 100)}%`}
-                        {movie.playCount ? ` · 播放 ${movie.playCount} 次` : ""}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-          </aside>
-
+        <div>
           <section className="min-w-0">
             <div className="mb-4 flex flex-col gap-2 border border-[#3e392d] bg-[#211e18]/72 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -727,6 +650,52 @@ const MoviesLazyPage = () => {
                 {selectedGenre && <ActivePill label={`类型：${selectedGenre}`} />}
                 {searchQuery && <ActivePill label={`搜索：${searchQuery}`} />}
               </div>
+            </div>
+
+            <div className="mb-4 space-y-4">
+              <FilterPanel
+                title="演员"
+                subtitle={`${actress.length} 位`}
+                expanded={showActressFilters}
+                onToggle={() => setShowActressFilters((prev) => !prev)}
+              >
+                <ChipCloud
+                  items={actress}
+                  selected={selectedActress}
+                  onSelect={(name) => {
+                    if (selectedActress === name) {
+                      setSelectedActress(null);
+                      setSearchQuery("");
+                    } else {
+                      setSelectedActress(name);
+                      setSelectedGenre(null);
+                      setSearchQuery(name || "");
+                    }
+                  }}
+                />
+              </FilterPanel>
+
+              <FilterPanel
+                title="类型"
+                subtitle={`${genres.length} 类`}
+                expanded={showGenreFilters}
+                onToggle={() => setShowGenreFilters((prev) => !prev)}
+              >
+                <ChipCloud
+                  items={genres}
+                  selected={selectedGenre}
+                  onSelect={(name) => {
+                    if (selectedGenre === name) {
+                      setSelectedGenre(null);
+                      setSearchQuery("");
+                    } else {
+                      setSelectedGenre(name);
+                      setSelectedActress(null);
+                      setSearchQuery("");
+                    }
+                  }}
+                />
+              </FilterPanel>
             </div>
 
             {loading && (
@@ -844,13 +813,34 @@ function Metric({
   label,
   value,
   tone = "normal",
+  active = false,
+  disabled = false,
+  onClick,
 }: {
   label: string;
   value: string;
   tone?: "normal" | "warn";
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
 }) {
+  const className = `border p-3 text-left transition ${
+    tone === "warn" ? "border-[#6b4b2b] bg-[#2c2115]" : "border-[#3e392d] bg-[#15130f]"
+  } ${active ? "border-[#d79b43] bg-[#3a2a16]" : ""} ${
+    onClick && !disabled ? "cursor-pointer hover:border-[#d79b43] hover:bg-[#2a261d]" : ""
+  } ${disabled ? "cursor-not-allowed opacity-70" : ""}`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} disabled={disabled} className={className}>
+        <div className="text-[11px] font-bold text-[#8f846f]">{label}</div>
+        <div className="mt-1 truncate text-lg font-black text-[#fff8e7]">{value}</div>
+      </button>
+    );
+  }
+
   return (
-    <div className={`border p-3 ${tone === "warn" ? "border-[#6b4b2b] bg-[#2c2115]" : "border-[#3e392d] bg-[#15130f]"}`}>
+    <div className={className}>
       <div className="text-[11px] font-bold text-[#8f846f]">{label}</div>
       <div className="mt-1 truncate text-lg font-black text-[#fff8e7]">{value}</div>
     </div>

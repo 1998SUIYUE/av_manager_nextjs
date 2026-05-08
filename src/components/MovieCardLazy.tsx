@@ -171,7 +171,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
   if (isLoading) {
     return (
       <div className="overflow-hidden border border-[#3e392d] bg-[#211e18]">
-        <div className="h-[260px] animate-pulse bg-[#2a261d] sm:h-[280px] 2xl:h-[220px]" />
+        <div className="h-[260px] animate-pulse bg-[#2a261d] sm:h-[280px] 2xl:h-[300px]" />
         <div className="space-y-3 p-3">
           <div className="h-4 w-3/4 animate-pulse bg-[#3a3326]" />
           <div className="h-3 w-1/2 animate-pulse bg-[#3a3326]" />
@@ -229,11 +229,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
         </div>
       )}
 
-      <div className={`relative flex h-[260px] items-center justify-center bg-[#0f0e0b] sm:h-[280px] 2xl:h-[185px] ${isConfirmingDelete ? "opacity-45" : ""}`}>
-        <div className="absolute left-2 top-2 z-10 border border-black/40 bg-[#e7bd67] px-2 py-1 text-[11px] font-black text-[#1b160f]">
-          {movie.code || movie.extension.toUpperCase()}
-        </div>
-
+      <div className={`relative flex h-[260px] items-center justify-center overflow-hidden bg-[#0f0e0b] sm:h-[280px] 2xl:h-[242px] ${isConfirmingDelete ? "opacity-45" : ""}`}>
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 opacity-0 transition duration-300 group-hover:bg-black/35 group-hover:opacity-100">
           <div className="grid h-14 w-14 place-items-center border border-white/30 bg-white/12 text-white backdrop-blur">
             <svg className="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor">
