@@ -58,6 +58,13 @@ function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function hasLocalCover(movie: MovieData | null): boolean {
+  return Boolean(
+    movie?.coverUrl &&
+      (movie.coverUrl.startsWith("/api/image-serve/") || movie.coverUrl.startsWith("/image-cache/"))
+  );
+}
+
 const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
   const [leftMovie, setLeftMovie] = useState<MovieData | null>(null);
   const [rightMovie, setRightMovie] = useState<MovieData | null>(null);
@@ -248,6 +255,34 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  useEffect(() => {
+    const hydrateMovieDetails = async (movie: MovieData | null, side: "left" | "right") => {
+      if (!movie?.code || hasLocalCover(movie)) return;
+
+      try {
+        const response = await fetch(`/api/movie-details/${movie.code}`);
+        if (!response.ok) return;
+
+        const details: Partial<MovieData> = await response.json();
+        const setMovie = side === "left" ? setLeftMovie : setRightMovie;
+        setMovie((current) =>
+          current?.absolutePath === movie.absolutePath
+            ? {
+                ...current,
+                ...details,
+                title: details.title || current.title,
+              }
+            : current
+        );
+      } catch (error) {
+        console.error(`加载对战影片详情失败: ${movie.code}`, error);
+      }
+    };
+
+    hydrateMovieDetails(leftMovie, "left");
+    hydrateMovieDetails(rightMovie, "right");
+  }, [leftMovie, rightMovie]);
 
   const renderMovie = (movie: MovieData | null, side: "left" | "right") => {
     if (!movie) {
