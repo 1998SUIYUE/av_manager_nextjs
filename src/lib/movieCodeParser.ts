@@ -13,7 +13,12 @@ const YEAR_PATTERN = /\b(19\d{2}|20\d{2})\b/;
 
 export function parseMovieFilename(filename: string): ParsedMovieFilename {
   const nameWithoutExt = path.basename(filename, path.extname(filename));
-  const codeMatch = nameWithoutExt.match(MOVIE_CODE_PATTERN);
+
+  // 优先处理 @ 符号后的内容
+  const atIndex = nameWithoutExt.lastIndexOf("@");
+  const searchableName = atIndex > -1 ? nameWithoutExt.substring(atIndex + 1) : nameWithoutExt;
+
+  const codeMatch = searchableName.match(MOVIE_CODE_PATTERN);
   const code = codeMatch?.[1]?.toUpperCase();
   const year = nameWithoutExt.match(YEAR_PATTERN)?.[0];
 
