@@ -83,12 +83,12 @@ const MoviesLazyPage = () => {
 
   const [isDuelMode, setIsDuelMode] = useState<boolean>(false);
 
-  const fetchMovies = useCallback(async () => {
+  const fetchMovies = useCallback(async (forceRescan = false) => {
     setLoading(true);
     setError(null);
     setLoadedCount(0);
     try {
-      const response = await fetch("/api/movies-list");
+      const response = await fetch(forceRescan ? "/api/movies-list?rescan=1" : "/api/movies-list");
 
       if (!response.ok) {
         throw new Error(`请求失败，状态码 ${response.status}`);
@@ -453,7 +453,7 @@ const MoviesLazyPage = () => {
 
             <button
               type="button"
-              onClick={fetchMovies}
+              onClick={() => fetchMovies(true)}
               className="h-12 border border-[#4a4334] px-4 text-sm font-bold text-[#e7bd67] transition hover:border-[#d79b43] hover:bg-[#2a261d]"
             >
               刷新列表

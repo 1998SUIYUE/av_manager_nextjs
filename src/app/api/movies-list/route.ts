@@ -11,6 +11,7 @@ import { getMovieDirectoryPath } from "@/utils/paths";
 
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm"];
 const FILE_SIZE_THRESHOLD = 100 * 1024 * 1024;
+const SCAN_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface MovieFile {
   filename: string;
@@ -53,6 +54,22 @@ function parseMovieFilename(filename: string): {
 }
 
 const STORAGE_PATH = getMovieDirectoryPath();
+
+let scanCache:
+  | {
+      directory: string;
+      scannedAt: number;
+      movies: MovieFile[];
+    }
+  | null = null;
+
+const inFlightScans = new Map<string, Promise<MovieFile[]>>();
+
+function cloneExistingMovies(movies: MovieFile[]): MovieFile[] {
+  return movies
+    .filter((movie) => fs.existsSync(movie.absolutePath))
+    .map((movie) => ({ ...movie }));
+}
 
 async function getStoredDirectory(): Promise<string> {
   try {
@@ -130,6 +147,44 @@ async function scanMovieDirectory(directoryPath: string): Promise<MovieFile[]> {
   return movieFiles;
 }
 
+async function getScannedMovies(directoryPath: string, forceRescan: boolean): Promise<MovieFile[]> {
+  const normalizedDirectory = path.resolve(directoryPath);
+  const cacheIsFresh =
+    scanCache &&
+    scanCache.directory === normalizedDirectory &&
+    Date.now() - scanCache.scannedAt < SCAN_CACHE_TTL_MS;
+
+  if (!forceRescan && cacheIsFresh) {
+    const cache = scanCache!;
+    devWithTimestamp(`[movies-list] 使用扫描缓存，影片数: ${cache.movies.length}`);
+    return cloneExistingMovies(cache.movies);
+  }
+
+  const existingScan = inFlightScans.get(normalizedDirectory);
+  if (!forceRescan && existingScan) {
+    devWithTimestamp(`[movies-list] 复用正在进行的扫描: ${normalizedDirectory}`);
+    const movies = await existingScan;
+    return cloneExistingMovies(movies);
+  }
+
+  const scanPromise = scanMovieDirectory(directoryPath)
+    .then((movies) => {
+      scanCache = {
+        directory: normalizedDirectory,
+        scannedAt: Date.now(),
+        movies,
+      };
+      return movies;
+    })
+    .finally(() => {
+      inFlightScans.delete(normalizedDirectory);
+    });
+
+  inFlightScans.set(normalizedDirectory, scanPromise);
+  const movies = await scanPromise;
+  return cloneExistingMovies(movies);
+}
+
 
 // ==================================
 // API 入口 (GET)
@@ -138,9 +193,10 @@ async function scanMovieDirectory(directoryPath: string): Promise<MovieFile[]> {
 import { getAllCachedMovieMetadata } from "@/lib/movieMetadataCache";
 import { getAllEloRatings } from "@/lib/eloRatingCache";
 
-export async function GET() {
+export async function GET(request: Request) {
   devWithTimestamp(`[movies-list] 接收到 GET 请求`);
   try {
+    const forceRescan = new URL(request.url).searchParams.get("rescan") === "1";
     const movieDirectory = await getStoredDirectory();
 
     if (!movieDirectory) {
@@ -154,8 +210,9 @@ export async function GET() {
         );
     }
 
-    // 1. Scan file system to get the base list of movies
-    const moviesFromDisk = await scanMovieDirectory(movieDirectory);
+    // 1. Scan file system to get the base list of movies. Scanning is the
+    // expensive part, so it is cached briefly; metadata and Elo are merged fresh.
+    const moviesFromDisk = await getScannedMovies(movieDirectory, forceRescan);
     
     // 2. Get the entire metadata and elo caches (from memory)
     const metadataCache = await getAllCachedMovieMetadata();
