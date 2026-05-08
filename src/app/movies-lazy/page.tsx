@@ -1,23 +1,21 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, useTransition } from "react";
 import MovieCardLazy from "@/components/MovieCardLazy";
 import { devWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer";
-import MovieDuel from "@/components/MovieDuel"; // 导入 MovieDuel 组件
+import MovieDuel from "@/components/MovieDuel";
 
-// 安全的Base64编码函数
 function safeBase64Encode(str: string): string {
   try {
     return btoa(encodeURIComponent(str));
   } catch (error) {
-    console.error('Base64编码失败:', error);
+    console.error("Base64 编码失败:", error);
     return encodeURIComponent(str);
   }
 }
 
-// 扩展电影数据接口以包含所有可能的字段
 export interface MovieData {
   filename: string;
   path: string;
@@ -41,63 +39,67 @@ export interface MovieData {
   winRate?: number;
 }
 
-
-// 定义排序模式的类型
 type SortMode = "time" | "size" | "elo";
+type SortDirection = "desc" | "asc";
+
+const sortOptions: Array<{ value: SortMode; label: string; hint: string }> = [
+  { value: "time", label: "时间", hint: "按修改时间" },
+  { value: "elo", label: "评分", hint: "按 Elo 评分" },
+  { value: "size", label: "大小", hint: "按文件大小" },
+];
+
+const formatTotalSize = (sizeInGB: number) => {
+  if (sizeInGB >= 1024) return `${(sizeInGB / 1024).toFixed(1)} TB`;
+  return `${sizeInGB.toFixed(1)} GB`;
+};
 
 const MoviesLazyPage = () => {
   const [movies, setMovies] = useState<MovieData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("time");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [totalMovies, setTotalMovies] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
+  const [isSortPending, startSortTransition] = useTransition();
 
-  // 新增：筛选器相关状态
-  const [actress, setActress] = useState<{ name: string, count: number }[]>([]);
-  const [genres, setGenres] = useState<{ name: string, count: number }[]>([]);
+  const [actress, setActress] = useState<{ name: string; count: number }[]>([]);
+  const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
   const [selectedActress, setSelectedActress] = useState<string | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [showActressFilters, setShowActressFilters] = useState<boolean>(false);
   const [showGenreFilters, setShowGenreFilters] = useState<boolean>(false);
 
-  // 新增：用于存储和控制重复电影的显示
   const [duplicateMovies, setDuplicateMovies] = useState<Record<string, MovieData[]>>({});
   const [showDuplicates, setShowDuplicates] = useState<boolean>(false);
 
-  // 视频播放相关状态
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
   const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
 
-  // 新增：播放器内删除按钮的状态
   const [isConfirmingPlayerDelete, setIsConfirmingPlayerDelete] = useState(false);
   const [isDeletingFromPlayer, setIsDeletingFromPlayer] = useState(false);
   const playerDeleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 新增：对战模式状态
   const [isDuelMode, setIsDuelMode] = useState<boolean>(false);
 
   const fetchMovies = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setLoadedCount(0); // Reset counter on fetch
+    setLoadedCount(0);
     try {
-      const apiUrl = `/api/movies-list`;
-      const response = await fetch(apiUrl);
-      
+      const response = await fetch("/api/movies-list");
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`请求失败，状态码 ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
       setMovies(data.movies);
       setTotalMovies(data.total);
-
     } catch (e: unknown) {
       devWithTimestamp("Error fetching movies list:", e);
-      setError(`Failed to load movies: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`加载影片失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -108,52 +110,49 @@ const MoviesLazyPage = () => {
   }, [fetchMovies]);
 
   const handleCardLoaded = useCallback(() => {
-    setLoadedCount(prevCount => prevCount + 1);
+    setLoadedCount((prevCount) => prevCount + 1);
   }, []);
 
-  // 新增：处理子组件加载的详细信息
   const handleDetailsLoaded = useCallback((details: MovieData) => {
-    // 修复：不要用详情对象覆盖原始电影对象，否则会丢失 size/modifiedAt 等用于排序的字段
-    setMovies(prevMovies =>
-      prevMovies.map(movie =>
+    setMovies((prevMovies) =>
+      prevMovies.map((movie) =>
         movie.absolutePath === details.absolutePath ? { ...movie, ...details } : movie
       )
     );
   }, []);
 
-  // 使用 useMemo 动态计算女优和分类列表
   useEffect(() => {
     const actressCounts = new Map<string, number>();
     const genreCounts = new Map<string, number>();
 
-    movies.forEach(movie => {
+    movies.forEach((movie) => {
       if (movie.actress) {
         actressCounts.set(movie.actress, (actressCounts.get(movie.actress) || 0) + 1);
       }
       if (movie.kinds) {
-        movie.kinds.forEach(kind => {
+        movie.kinds.forEach((kind) => {
           genreCounts.set(kind, (genreCounts.get(kind) || 0) + 1);
         });
       }
     });
 
-    const sortedActress = Array.from(actressCounts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-    
-    const sortedGenres = Array.from(genreCounts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+    setActress(
+      Array.from(actressCounts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+    );
 
-    setActress(sortedActress);
-    setGenres(sortedGenres);
+    setGenres(
+      Array.from(genreCounts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+    );
   }, [movies]);
 
-  // 新增：识别重复的电影
   useEffect(() => {
     const moviesByCode = new Map<string, MovieData[]>();
-    
-    movies.forEach(movie => {
+
+    movies.forEach((movie) => {
       if (movie.code) {
         const existing = moviesByCode.get(movie.code) || [];
         existing.push(movie);
@@ -171,7 +170,6 @@ const MoviesLazyPage = () => {
     setDuplicateMovies(foundDuplicates);
   }, [movies]);
 
-
   const handleMovieClick = useCallback((absolutePath: string) => {
     setSelectedVideoPath(absolutePath);
     setShowVideoPlayer(true);
@@ -180,7 +178,6 @@ const MoviesLazyPage = () => {
   const handleCloseVideoPlayer = useCallback(() => {
     setSelectedVideoPath(null);
     setShowVideoPlayer(false);
-    // 重置播放器删除按钮状态
     setIsConfirmingPlayerDelete(false);
     setIsDeletingFromPlayer(false);
     if (playerDeleteConfirmTimeoutRef.current) {
@@ -188,30 +185,27 @@ const MoviesLazyPage = () => {
     }
   }, []);
 
-  // --- 核心删除逻辑 (已解耦) ---
   const handleDeleteMovieClick = useCallback(async (filePath: string) => {
     try {
       const response = await fetch("/api/movies/delete-file", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filePath: filePath }),
+        body: JSON.stringify({ filePath }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "删除文件失败");
       }
-      
-      setMovies(prevMovies => prevMovies.filter(movie => movie.absolutePath !== filePath));
-      setTotalMovies(prevTotal => Math.max(0, prevTotal - 1));
 
+      setMovies((prevMovies) => prevMovies.filter((movie) => movie.absolutePath !== filePath));
+      setTotalMovies((prevTotal) => Math.max(0, prevTotal - 1));
     } catch (error) {
-      devWithTimestamp(`删除电影时发生错误: ${filePath}`, error);
+      devWithTimestamp(`删除影片时发生错误：${filePath}`, error);
       throw error;
     }
   }, []);
 
-  // --- 播放器内部的删除处理函数 (新版) ---
   const handleDeleteFromPlayer = useCallback(async () => {
     if (!selectedVideoPath) return;
 
@@ -221,13 +215,12 @@ const MoviesLazyPage = () => {
 
     if (isConfirmingPlayerDelete) {
       setIsDeletingFromPlayer(true);
-      const filename = movies.find(m => m.absolutePath === selectedVideoPath)?.filename || selectedVideoPath;
+      const filename = movies.find((m) => m.absolutePath === selectedVideoPath)?.filename || selectedVideoPath;
       try {
         await handleDeleteMovieClick(selectedVideoPath);
-        setShowVideoPlayer(false); // 成功后关闭
+        setShowVideoPlayer(false);
       } catch (error) {
-        alert(`删除电影 "${filename}" 失败: ${error instanceof Error ? error.message : String(error)}`);
-        // 失败后重置按钮状态
+        alert(`删除影片“${filename}”失败：${error instanceof Error ? error.message : String(error)}`);
         setIsConfirmingPlayerDelete(false);
       } finally {
         setIsDeletingFromPlayer(false);
@@ -236,11 +229,10 @@ const MoviesLazyPage = () => {
       setIsConfirmingPlayerDelete(true);
       playerDeleteConfirmTimeoutRef.current = setTimeout(() => {
         setIsConfirmingPlayerDelete(false);
-      }, 4000); // 4秒自动取消
+      }, 4000);
     }
   }, [selectedVideoPath, isConfirmingPlayerDelete, handleDeleteMovieClick, movies]);
 
-  // --- Effect for cleaning up timeout ---
   useEffect(() => {
     return () => {
       if (playerDeleteConfirmTimeoutRef.current) {
@@ -252,296 +244,526 @@ const MoviesLazyPage = () => {
   const sortedAndFilteredMovies = useMemo(() => {
     let currentMovies = [...movies];
 
-    // 1. Apply general search query
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
-      currentMovies = currentMovies.filter(movie => 
-        (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
-        (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
-        (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
-        (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
-        (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
+      currentMovies = currentMovies.filter(
+        (movie) =>
+          (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
       );
     }
 
-    // 2. Apply actress filter
     if (selectedActress) {
       const lowerCaseActress = selectedActress.toLowerCase();
-      currentMovies = currentMovies.filter(movie => 
-        movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
+      currentMovies = currentMovies.filter(
+        (movie) => movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
       );
     }
 
-    // 3. Apply genre filter
     if (selectedGenre) {
-      currentMovies = currentMovies.filter(movie => 
-        movie.kinds && movie.kinds.includes(selectedGenre)
-      );
+      currentMovies = currentMovies.filter((movie) => movie.kinds && movie.kinds.includes(selectedGenre));
     }
 
+    const directionFactor = sortDirection === "desc" ? -1 : 1;
+    currentMovies.sort((a, b) => {
+      let valueA = 0;
+      let valueB = 0;
 
-    if (sortMode === "time") {
-      currentMovies.sort((a, b) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0));
-    } else if (sortMode === "size") {
-      currentMovies.sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
-    } else if (sortMode === "elo") {
-      currentMovies.sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000));
-    }
+      if (sortMode === "time") {
+        valueA = a.modifiedAt ?? 0;
+        valueB = b.modifiedAt ?? 0;
+      } else if (sortMode === "size") {
+        valueA = a.size ?? 0;
+        valueB = b.size ?? 0;
+      } else if (sortMode === "elo") {
+        valueA = a.elo ?? 1000;
+        valueB = b.elo ?? 1000;
+      }
+
+      return (valueA - valueB) * directionFactor;
+    });
     return currentMovies;
-  }, [movies, sortMode, searchQuery, selectedActress, selectedGenre]);
+  }, [movies, sortMode, sortDirection, searchQuery, selectedActress, selectedGenre]);
+
+  const totalToLoad = useMemo(() => movies.filter((m) => m.code).length, [movies]);
+  const duplicateGroupCount = Object.keys(duplicateMovies).length;
+  const totalSize = useMemo(() => movies.reduce((sum, movie) => sum + (movie.sizeInGB || 0), 0), [movies]);
+  const ratedCount = useMemo(() => movies.filter((movie) => (movie.matchCount || 0) > 0).length, [movies]);
+  const topMovie = useMemo(
+    () => [...movies].sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000))[0],
+    [movies]
+  );
+
+  const activeFilterCount = [searchQuery, selectedActress, selectedGenre].filter(Boolean).length;
 
   const handleRandomPlay = useCallback(() => {
     const pool = sortedAndFilteredMovies.length > 0 ? sortedAndFilteredMovies : movies;
     if (!pool.length) {
-      alert('当前没有可供随机播放的影片');
+      alert("当前没有可随机播放的影片");
       return;
     }
     const randomIndex = Math.floor(Math.random() * pool.length);
     handleMovieClick(pool[randomIndex].absolutePath);
   }, [sortedAndFilteredMovies, movies, handleMovieClick]);
 
-  const totalToLoad = useMemo(() => movies.filter(m => m.code).length, [movies]);
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedActress(null);
+    setSelectedGenre(null);
+  };
 
   if (isDuelMode) {
     return <MovieDuel allMovies={movies} onExit={() => setIsDuelMode(false)} />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
-      {/* Hero */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 opacity-30 pointer-events-none -z-10 bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.35),transparent_60%)]" />
-        <div className="max-w-7xl mx-auto px-4 pt-10 pb-6">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300">我的影片库</span>
-            <span className="ml-2 text-slate-300 text-lg align-middle">(懒加载)</span>
-          </h1>
-          <p className="mt-3 text-slate-400 max-w-2xl">智能抓取元数据 · 抽帧自动封面 · 即点即播 · 支持筛选与随机播放</p>
+    <main className="min-h-screen bg-[#15130f] text-[#f7f0df]">
+      <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:44px_44px]" />
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_18%_8%,rgba(235,185,88,0.18),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(44,140,118,0.16),transparent_32%),linear-gradient(180deg,rgba(21,19,15,0.2),#15130f_82%)]" />
 
-          {/* Toolbar */}
-          <div className="mt-6 flex flex-col lg:flex-row lg:items-center gap-3">
-            <div className="relative w-full lg:max-w-xl">
-              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
+      <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="overflow-hidden rounded-[6px] border border-[#3e392d] bg-[#211e18]/88 shadow-2xl shadow-black/35 backdrop-blur">
+          <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
+            <section className="border-b border-[#3e392d] p-5 sm:p-6 xl:border-b-0 xl:border-r">
+              <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-end 2xl:justify-between">
+                <div>
+                  <div className="mb-3 inline-flex items-center gap-2 border border-[#5d5138] bg-[#2f291d] px-3 py-1 text-xs font-semibold text-[#e7bd67]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#e7bd67]" />
+                    本地影库控制台
+                  </div>
+                  <h1 className="text-3xl font-black tracking-normal text-[#fff8e7] sm:text-5xl">
+                    我的影片库
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#b8af9d]">
+                    扫描本地文件，补全封面与元数据，快速筛选、播放、删除，并用对战评分整理你的片库偏好。
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:min-w-[520px]">
+                  <Metric label="影片" value={totalMovies.toString()} />
+                  <Metric label="容量" value={formatTotalSize(totalSize)} />
+                  <Metric label="已评分" value={ratedCount.toString()} />
+                  <Metric label="重复组" value={duplicateGroupCount.toString()} tone={duplicateGroupCount ? "warn" : "normal"} />
+                </div>
+              </div>
+            </section>
+
+            <section className="p-5 sm:p-6">
+              <div className="flex h-full flex-col justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">今日入口</div>
+                  <div className="mt-3 text-lg font-bold text-[#fff8e7]">
+                    {topMovie?.code ? `当前最高评分：${topMovie.code}` : "等待加载评分数据"}
+                  </div>
+                  <div className="mt-1 text-sm text-[#b8af9d]">
+                    {topMovie?.elo ? `Elo ${topMovie.elo}` : "未评分影片会以 1000 分作为初始值"}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRandomPlay}
+                    className="border border-[#d79b43] bg-[#d79b43] px-4 py-3 text-sm font-black text-[#1e160b] transition hover:bg-[#efb85d] active:translate-y-px"
+                  >
+                    随机播放
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsDuelMode(true)}
+                    className="border border-[#4fa58b] bg-[#214f45] px-4 py-3 text-sm font-black text-[#dffbf0] transition hover:bg-[#2c6759] active:translate-y-px"
+                  >
+                    影片对战
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </header>
+
+        <section className="sticky top-0 z-30 border border-[#3e392d] bg-[#191711]/94 p-3 shadow-xl shadow-black/30 backdrop-blur">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#8f846f]">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m21 21-4.3-4.3" />
+                  <circle cx="11" cy="11" r="8" />
+                </svg>
               </span>
               <input
                 type="text"
-                placeholder="搜索：标题 / 番号 / 女优 / 文件名"
+                placeholder="搜索：标题、番号、演员、文件名"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-800/70 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-500 placeholder-slate-400"
+                className="h-12 w-full border border-[#4a4334] bg-[#0f0e0b] pl-11 pr-11 text-sm text-[#fff8e7] outline-none transition placeholder:text-[#817867] focus:border-[#d79b43]"
               />
               {searchQuery && (
                 <button
+                  type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-300 hover:text-white"
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#b8af9d] hover:text-[#fff8e7]"
+                  aria-label="清空搜索"
                 >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-pressed={sortMode === "time"}
-                onClick={() => setSortMode("time")}
-                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "time" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
-              >按时间</button>
-              <button
-                type="button"
-                aria-pressed={sortMode === "size"}
-                onClick={() => setSortMode("size")}
-                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "size" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
-              >按大小</button>
-              <button
-                type="button"
-                aria-pressed={sortMode === "elo"}
-                onClick={() => setSortMode("elo")}
-                className={`px-4 py-2 rounded-lg border transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${sortMode === "elo" ? "bg-blue-600 border-blue-500" : "bg-slate-800/70 border-slate-700 hover:bg-slate-700"}`}
-              >按评分</button>
-              <button
-                type="button"
-                onClick={handleRandomPlay}
-                title="优先从当前搜索/筛选结果中随机，若为空则从全部影片中随机"
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 shadow-md shadow-emerald-800/30 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-              >随机播放</button>
-              <button
-                type="button"
-                onClick={() => setIsDuelMode(true)}
-                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 border border-purple-500/60 shadow-md shadow-purple-800/30 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500/60"
-              >影片对战</button>
+            <div className="grid grid-cols-3 border border-[#4a4334] bg-[#0f0e0b] xl:w-[360px]">
+              {sortOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={sortMode === option.value}
+                  title={option.hint}
+                  onClick={() => startSortTransition(() => setSortMode(option.value))}
+                  className={`px-3 py-2 text-sm font-bold transition ${
+                    sortMode === option.value
+                      ? "bg-[#e7bd67] text-[#1b160f]"
+                      : "text-[#c8bdab] hover:bg-[#2a261d] hover:text-[#fff8e7]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-          </div>
 
-          {/* Stats */}
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <span className="px-2.5 py-1 rounded-full bg-slate-800/70 border border-slate-700 text-slate-300">总数：{totalMovies}</span>
-            {totalToLoad > 0 && loadedCount < totalToLoad && (
-              <span className="px-2.5 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-300">加载详情：{loadedCount} / {totalToLoad}</span>
-            )}
-            {(searchQuery || selectedActress || selectedGenre) && (
-              <span className="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300">结果：{sortedAndFilteredMovies.length}</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="max-w-7xl mx-auto px-4 mt-4 space-y-4">
-        {/* 女优筛选 */}
-        <div className={`transition-all duration-300 ${showActressFilters ? 'p-4 bg-slate-900/80 rounded-xl border border-slate-800 shadow-lg shadow-black/40' : ''}`}>
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold text-slate-200">女优</h3>
             <button
-              onClick={() => setShowActressFilters(prev => !prev)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
-            >{showActressFilters ? '收起' : '展开'}</button>
-          </div>
-          <div className={`flex flex-wrap gap-2 ${showActressFilters ? '' : 'overflow-hidden max-h-8'}`}>
-            {actress.map((a) => (
+              type="button"
+              onClick={() =>
+                startSortTransition(() =>
+                  setSortDirection((current) => (current === "desc" ? "asc" : "desc"))
+                )
+              }
+              className="h-12 border border-[#4a4334] px-4 text-sm font-bold text-[#f7f0df] transition hover:border-[#d79b43] hover:bg-[#2a261d]"
+              title={
+                sortDirection === "desc"
+                  ? "当前为倒序：时间新到旧、评分高到低、大小大到小"
+                  : "当前为顺序：时间旧到新、评分低到高、大小小到大"
+              }
+            >
+              {sortDirection === "desc" ? "倒序" : "顺序"}
+            </button>
+
+            <button
+              type="button"
+              onClick={fetchMovies}
+              className="h-12 border border-[#4a4334] px-4 text-sm font-bold text-[#e7bd67] transition hover:border-[#d79b43] hover:bg-[#2a261d]"
+            >
+              刷新列表
+            </button>
+
+            {activeFilterCount > 0 && (
               <button
-                key={`actress-${a.name}`}
-                className={`px-3 py-1.5 rounded-full text-xs border transition ${selectedActress === a.name ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/70 text-slate-200 hover:bg-slate-700 border-slate-700'}`}
-                onClick={() => {
-                  if (selectedActress === a.name) {
+                type="button"
+                onClick={clearFilters}
+                className="h-12 border border-[#72403a] px-4 text-sm font-bold text-[#ffb0a5] transition hover:bg-[#3a1d19]"
+              >
+                清除筛选
+              </button>
+            )}
+          </div>
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+          <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+            <FilterPanel
+              title="演员"
+              subtitle={`${actress.length} 位`}
+              expanded={showActressFilters}
+              onToggle={() => setShowActressFilters((prev) => !prev)}
+            >
+              <ChipCloud
+                items={actress}
+                selected={selectedActress}
+                onSelect={(name) => {
+                  if (selectedActress === name) {
                     setSelectedActress(null);
                     setSearchQuery("");
                   } else {
-                    setSelectedActress(a.name);
+                    setSelectedActress(name);
                     setSelectedGenre(null);
-                    setSearchQuery(a.name || "");
+                    setSearchQuery(name || "");
                   }
                 }}
-              >{a.name} <span className="opacity-70">({a.count})</span></button>
-            ))}
-          </div>
-        </div>
+              />
+            </FilterPanel>
 
-        {/* 类别筛选 */}
-        <div className={`transition-all duration-300 ${showGenreFilters ? 'p-4 bg-slate-900/80 rounded-xl border border-slate-800 shadow-lg shadow-black/40' : ''}`}>
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold text-slate-200">类别</h3>
-            <button
-              onClick={() => setShowGenreFilters(prev => !prev)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
-            >{showGenreFilters ? '收起' : '展开'}</button>
-          </div>
-          <div className={`flex flex-wrap gap-2 ${showGenreFilters ? '' : 'overflow-hidden max-h-8'}`}>
-            {genres.map((g) => (
-              <button
-                key={`genre-${g.name}`}
-                className={`px-3 py-1.5 rounded-full text-xs border transition ${selectedGenre === g.name ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/70 text-slate-200 hover:bg-slate-700 border-slate-700'}`}
-                onClick={() => {
-                  if (selectedGenre === g.name) {
+            <FilterPanel
+              title="类型"
+              subtitle={`${genres.length} 类`}
+              expanded={showGenreFilters}
+              onToggle={() => setShowGenreFilters((prev) => !prev)}
+            >
+              <ChipCloud
+                items={genres}
+                selected={selectedGenre}
+                onSelect={(name) => {
+                  if (selectedGenre === name) {
                     setSelectedGenre(null);
                     setSearchQuery("");
                   } else {
-                    setSelectedGenre(g.name);
+                    setSelectedGenre(name);
                     setSelectedActress(null);
                     setSearchQuery("");
                   }
                 }}
-              >{g.name} <span className="opacity-70">({g.count})</span></button>
-            ))}
-          </div>
-        </div>
+              />
+            </FilterPanel>
 
-        {/* 重复影片 */}
-        {Object.keys(duplicateMovies).length > 0 && (
-          <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-lg font-semibold text-amber-300">重复的电影（{Object.keys(duplicateMovies).length} 组）</h3>
-              <button
-                onClick={() => setShowDuplicates(prev => !prev)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700"
-              >{showDuplicates ? '收起' : '展开'}</button>
-            </div>
-            {showDuplicates && (
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Object.entries(duplicateMovies).map(([code, movies]) => (
-                  <div key={code} className="p-3 bg-slate-900/70 rounded-lg border border-slate-800">
-                    <h4 className="font-bold text-base text-blue-300 mb-2">{code}</h4>
-                    <ul className="space-y-1 text-sm">
-                      {movies.map(movie => (
-                        <li key={movie.absolutePath} className="flex items-center justify-between text-slate-300">
-                          <span 
-                            className="cursor-pointer hover:underline hover:text-white"
-                            onClick={() => handleMovieClick(movie.absolutePath)}
-                            title={`点击播放: ${movie.filename}`}
-                          >{movie.filename}</span>
-                          <span className="text-slate-400 ml-2">{(movie.sizeInGB).toFixed(2)} GB</span>
-                        </li>
-                      ))}
-                    </ul>
+            {duplicateGroupCount > 0 && (
+              <section className="border border-[#6b4b2b] bg-[#241b12]/92">
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicates((prev) => !prev)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span>
+                    <span className="block text-sm font-black text-[#f0bd73]">重复影片</span>
+                    <span className="text-xs text-[#b8af9d]">{duplicateGroupCount} 组番号重复</span>
+                  </span>
+                  <span className="text-sm font-bold text-[#e7bd67]">{showDuplicates ? "收起" : "展开"}</span>
+                </button>
+
+                {showDuplicates && (
+                  <div className="max-h-[420px] space-y-3 overflow-auto border-t border-[#4a3926] p-3">
+                    {Object.entries(duplicateMovies).map(([code, group]) => (
+                      <div key={code} className="border border-[#3e392d] bg-[#15130f] p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="font-black text-[#fff8e7]">{code}</span>
+                          <span className="text-xs text-[#d5a85d]">{group.length} 部</span>
+                        </div>
+                        <div className="space-y-2">
+                          {group.map((movie) => (
+                            <button
+                              key={movie.absolutePath}
+                              type="button"
+                              onClick={() => handleMovieClick(movie.absolutePath)}
+                              title={`点击播放：${movie.filename}`}
+                              className="block w-full text-left text-xs leading-5 text-[#c8bdab] hover:text-[#fff8e7]"
+                            >
+                              <span className="line-clamp-2">{movie.filename}</span>
+                              <span className="text-[#8f846f]">{movie.sizeInGB.toFixed(2)} GB</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+              </section>
+            )}
+          </aside>
+
+          <section className="min-w-0">
+            <div className="mb-4 flex flex-col gap-2 border border-[#3e392d] bg-[#211e18]/72 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-black text-[#fff8e7]">
+                  {loading ? "正在整理片库" : `当前显示 ${sortedAndFilteredMovies.length} 部影片`}
+                </div>
+                <div className="mt-1 text-xs text-[#a99f8d]">
+                  {isSortPending
+                    ? "正在切换排序..."
+                    : totalToLoad > 0 && loadedCount < totalToLoad
+                    ? `正在补全详情：${loadedCount} / ${totalToLoad}`
+                    : activeFilterCount > 0
+                    ? "筛选条件已生效"
+                    : "按当前排序展示全部可识别影片"}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 text-xs">
+                {selectedActress && <ActivePill label={`演员：${selectedActress}`} />}
+                {selectedGenre && <ActivePill label={`类型：${selectedGenre}`} />}
+                {searchQuery && <ActivePill label={`搜索：${searchQuery}`} />}
+              </div>
+            </div>
+
+            {loading && (
+              <div className="mb-4 border border-[#3e392d] bg-[#211e18] p-5 text-center text-sm text-[#d9cbb4]">
+                正在加载影片列表，请稍候...
               </div>
             )}
-          </div>
-        )}
+
+            {error && (
+              <div className="mb-4 border border-[#7b3731] bg-[#321916] p-5 text-center text-sm text-[#ffb0a5]">
+                错误：{error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {sortedAndFilteredMovies.map((movie) => (
+                <MovieCardLazy
+                  key={movie.absolutePath}
+                  movie={movie}
+                  onMovieClick={handleMovieClick}
+                  onLoaded={handleCardLoaded}
+                  onDetailsLoaded={handleDetailsLoaded}
+                  onDelete={handleDeleteMovieClick}
+                />
+              ))}
+            </div>
+
+            {!loading && movies.length === 0 && !error && (
+              <div className="mt-8 border border-[#3e392d] bg-[#211e18]/80 p-8 text-center">
+                <div className="text-lg font-black text-[#fff8e7]">没有找到影片文件</div>
+                <p className="mt-2 text-sm text-[#b8af9d]">请检查目录是否正确，或确认文件格式和大小符合扫描条件。</p>
+              </div>
+            )}
+
+            {!loading && movies.length > 0 && sortedAndFilteredMovies.length === 0 && !error && (
+              <div className="mt-8 border border-[#3e392d] bg-[#211e18]/80 p-8 text-center">
+                <div className="text-lg font-black text-[#fff8e7]">没有匹配的影片</div>
+                <p className="mt-2 text-sm text-[#b8af9d]">换个关键词，或清除当前筛选条件。</p>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 mt-6 pb-10">
-        {loading && <p className="text-center text-base text-slate-300 mb-4">正在加载电影列表...</p>}
-        {error && <p className="text-center text-red-400 mb-4">错误: {error}</p>}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {sortedAndFilteredMovies.map((movie) => (
-            <MovieCardLazy 
-              key={movie.absolutePath} 
-              movie={movie} 
-              onMovieClick={handleMovieClick}
-              onLoaded={handleCardLoaded}
-              onDetailsLoaded={handleDetailsLoaded}
-              onDelete={handleDeleteMovieClick}
-            />
-          ))}
-        </div>
-
-        {!loading && movies.length === 0 && !error && (
-          <p className="text-center text-lg mt-10 text-slate-400">没有找到电影文件。</p>
-        )}
-
-        {showVideoPlayer && selectedVideoPath && (
+      {showVideoPlayer && selectedVideoPath && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#070604]/94 p-3 backdrop-blur-sm sm:p-5"
+          onClick={handleCloseVideoPlayer}
+        >
           <div
-            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={handleCloseVideoPlayer}
+            className="flex h-full w-full max-w-[1480px] flex-col border border-[#4a4334] bg-black shadow-2xl shadow-black"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className="relative bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-7xl h-full flex flex-col items-center justify-center"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center justify-between border-b border-[#2a261d] bg-[#15130f] px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-[#fff8e7]">
+                  {movies.find((m) => m.absolutePath === selectedVideoPath)?.filename || "正在播放"}
+                </div>
+                <div className="text-xs text-[#8f846f]">点击空白处关闭播放器</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeleteFromPlayer}
+                  disabled={isDeletingFromPlayer}
+                  className={`px-4 py-2 text-sm font-black transition ${
+                    isDeletingFromPlayer
+                      ? "cursor-not-allowed border border-[#4a4334] bg-[#2a261d] text-[#8f846f]"
+                      : isConfirmingPlayerDelete
+                      ? "border border-[#d15f50] bg-[#9b2e25] text-white hover:bg-[#b93b30]"
+                      : "border border-[#72403a] bg-[#2b1714] text-[#ffb0a5] hover:bg-[#3a1d19]"
+                  }`}
+                >
+                  {isDeletingFromPlayer ? "删除中..." : isConfirmingPlayerDelete ? "确认删除" : "删除影片"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseVideoPlayer}
+                  className="border border-[#4a4334] px-3 py-2 text-sm font-black text-[#f7f0df] hover:bg-[#2a261d]"
+                  aria-label="关闭播放器"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
               <VideoPlayer
                 src={`/api/video/stream?path=${safeBase64Encode(selectedVideoPath)}`}
                 filepath={selectedVideoPath}
-                filename={movies.find(m => m.absolutePath === selectedVideoPath)?.filename}
+                filename={movies.find((m) => m.absolutePath === selectedVideoPath)?.filename}
               />
-              <button
-                onClick={handleDeleteFromPlayer}
-                disabled={isDeletingFromPlayer}
-                className={`text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg mt-4 self-end transition-all duration-200 ${
-                  isDeletingFromPlayer
-                    ? 'bg-gray-600 cursor-not-allowed'
-                    : isConfirmingPlayerDelete
-                    ? 'bg-red-700 hover:bg-red-800'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
-                style={{ zIndex: 10 }}
-              >
-                {isDeletingFromPlayer 
-                  ? '删除中...'
-                  : isConfirmingPlayerDelete
-                  ? '确认删除？'
-                  : '删除电影'}
-              </button>
             </div>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </main>
   );
 };
+
+function Metric({
+  label,
+  value,
+  tone = "normal",
+}: {
+  label: string;
+  value: string;
+  tone?: "normal" | "warn";
+}) {
+  return (
+    <div className={`border p-3 ${tone === "warn" ? "border-[#6b4b2b] bg-[#2c2115]" : "border-[#3e392d] bg-[#15130f]"}`}>
+      <div className="text-[11px] font-bold text-[#8f846f]">{label}</div>
+      <div className="mt-1 truncate text-lg font-black text-[#fff8e7]">{value}</div>
+    </div>
+  );
+}
+
+function ActivePill({ label }: { label: string }) {
+  return <span className="border border-[#5d5138] bg-[#15130f] px-2.5 py-1 text-[#d9cbb4]">{label}</span>;
+}
+
+function FilterPanel({
+  title,
+  subtitle,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border border-[#3e392d] bg-[#211e18]/86">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left">
+        <span>
+          <span className="block text-sm font-black text-[#fff8e7]">{title}</span>
+          <span className="text-xs text-[#8f846f]">{subtitle}</span>
+        </span>
+        <span className="text-sm font-bold text-[#e7bd67]">{expanded ? "收起" : "展开"}</span>
+      </button>
+      <div className={`border-t border-[#3e392d] p-3 ${expanded ? "max-h-[360px] overflow-auto" : "max-h-[92px] overflow-hidden"}`}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ChipCloud({
+  items,
+  selected,
+  onSelect,
+}: {
+  items: { name: string; count: number }[];
+  selected: string | null;
+  onSelect: (name: string) => void;
+}) {
+  if (items.length === 0) {
+    return <div className="text-sm text-[#8f846f]">暂无可用筛选项</div>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <button
+          key={item.name}
+          type="button"
+          onClick={() => onSelect(item.name)}
+          className={`border px-2.5 py-1.5 text-xs font-bold transition ${
+            selected === item.name
+              ? "border-[#d79b43] bg-[#d79b43] text-[#1b160f]"
+              : "border-[#4a4334] bg-[#15130f] text-[#c8bdab] hover:border-[#e7bd67] hover:text-[#fff8e7]"
+          }`}
+        >
+          {item.name}
+          <span className="ml-1 opacity-70">{item.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default MoviesLazyPage;

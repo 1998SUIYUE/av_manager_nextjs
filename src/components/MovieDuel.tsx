@@ -1,225 +1,268 @@
-
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MovieData } from '@/app/movies-lazy/page';
-import VideoPlayer from './VideoPlayer';
-import { EloRating } from '@/lib/eloRatingCache'; // 仅导入 EloRating 接口，不再导入函数
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { MovieData } from "@/app/movies-lazy/page";
+import VideoPlayer from "./VideoPlayer";
+import { EloRating } from "@/lib/eloRatingCache";
 
 interface MovieDuelProps {
-    allMovies: MovieData[];
-    onExit: () => void;
+  allMovies: MovieData[];
+  onExit: () => void;
 }
 
+function safeBase64Encode(str: string): string {
+  try {
+    return btoa(encodeURIComponent(str));
+  } catch {
+    return encodeURIComponent(str);
+  }
+}
 
 const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
-    const [leftMovie, setLeftMovie] = useState<MovieData | null>(null);
-    const [rightMovie, setRightMovie] = useState<MovieData | null>(null);
-    const [eloRatings, setEloRatings] = useState<Map<string, EloRating>>(new Map());
-    const [isPlayingLeft, setIsPlayingLeft] = useState<boolean>(false); // 独立左侧播放状态
-    const [isPlayingRight, setIsPlayingRight] = useState<boolean>(false); // 独立右侧播放状态
-    const isInitialDuelSelected = useRef(false); // 新增一个 ref 来标记初始选片是否已完成
+  const [leftMovie, setLeftMovie] = useState<MovieData | null>(null);
+  const [rightMovie, setRightMovie] = useState<MovieData | null>(null);
+  const [eloRatings, setEloRatings] = useState<Map<string, EloRating>>(new Map());
+  const [isPlayingLeft, setIsPlayingLeft] = useState<boolean>(false);
+  const [isPlayingRight, setIsPlayingRight] = useState<boolean>(false);
+  const isInitialDuelSelected = useRef(false);
 
-    // 负责首次加载 Elo 评分
-    useEffect(() => {
-        const fetchEloRatings = async () => {
-            try {
-                const response = await fetch('/api/elo-ratings');
-                if (!response.ok) throw new Error('Failed to fetch Elo ratings');
-                const ratingsArray: EloRating[] = await response.json();
-                const newEloRatings = new Map(ratingsArray.map((r: EloRating) => [r.code, r]));
-                setEloRatings(newEloRatings);
-            } catch (error) {
-                console.error("Error loading Elo ratings:", error);
-                // 即使加载失败，也设置为空Map，避免一直处于加载中
-                setEloRatings(new Map());
-            }
-        };
-        fetchEloRatings();
-    }, []); // 仅在组件挂载时运行一次
-
-    const selectNewDuel = useCallback(() => {
-        const validMovies = allMovies.filter(movie => movie.code);
-
-        if (validMovies.length < 2) {
-            alert("没有足够的影片进行对战！");
-            onExit();
-            return;
-        }
-
-        // 新算法：遍历一次找到 minMatchCount，避免全量排序
-        let minMatchCount = Infinity;
-        for (const movie of validMovies) {
-            const count = eloRatings.get(movie.code!)?.matchCount || 0;
-            if (count < minMatchCount) {
-                minMatchCount = count;
-            }
-        }
-
-        // 再遍历一次，收集所有 matchCount 等于 minMatchCount 的影片
-        let leastRatedPool = validMovies.filter(movie => (eloRatings.get(movie.code!)?.matchCount || 0) === minMatchCount);
-        
-        // 如果 Elo 评分为空（例如第一次加载），则 leastRatedPool 可能是所有影片
-        // 或者 leastRatedPool 中只有一部影片，无法选出两部
-        if (leastRatedPool.length < 2) {
-             console.warn("当前 Elo 评分最少的影片不足两部，或 Elo 评分为空，从所有有效影片中随机选择。");
-             leastRatedPool = validMovies; // 此时使用所有有效影片
-             if (leastRatedPool.length < 2) {
-                 alert("没有足够的影片进行对战！");
-                 onExit();
-                 return;
-             }
-        }
-
-        let index1 = Math.floor(Math.random() * leastRatedPool.length);
-        let index2 = Math.floor(Math.random() * (leastRatedPool.length - 1));
-        if (index2 >= index1) {
-            index2++;
-        }
-
-        setLeftMovie(leastRatedPool[index1]);
-        setRightMovie(leastRatedPool[index2]);
-        setIsPlayingLeft(false); // 重置播放状态
-        setIsPlayingRight(false); // 重置播放状态
-    }, [allMovies, eloRatings, onExit]); // selectNewDuel 的依赖
-
-    // 负责在 allMovies 和 eloRatings 都加载完成时，选出第一对影片
-    useEffect(() => {
-        if (
-            allMovies.length > 0 &&
-            eloRatings.size >= 0 &&
-            !isInitialDuelSelected.current // 检查标记
-        ) {
-            selectNewDuel();
-            isInitialDuelSelected.current = true; // 设置标记，防止重复选片
-        }
-    }, [allMovies, eloRatings, selectNewDuel]);
-
-
-    const handleRating = useCallback(async (winner: 'left' | 'right' | 'draw') => {
-        if (!leftMovie?.code || !rightMovie?.code) return;
-
-        let resultString: 'winA' | 'winB' | 'draw';
-        if (winner === 'left') {
-            resultString = 'winA';
-        } else if (winner === 'right') {
-            resultString = 'winB';
-        } else {
-            resultString = 'draw';
-        }
-
-        try {
-            const response = await fetch('/api/elo-ratings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    codeA: leftMovie.code,
-                    codeB: rightMovie.code,
-                    result: resultString,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to update Elo ratings');
-            }
-
-            const { updatedRatingA, updatedRatingB } = await response.json();
-
-            // 直接根据 API 返回的数据更新内存中的评分
-            setEloRatings(prev => {
-                const newRatings = new Map(prev);
-                newRatings.set(updatedRatingA.code, updatedRatingA);
-                newRatings.set(updatedRatingB.code, updatedRatingB);
-                return newRatings;
-            });
-
-            selectNewDuel(); // 继续下一轮对战
-        } catch (error) {
-            console.error("Error updating Elo ratings:", error);
-            alert(`更新评分失败: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }, [leftMovie, rightMovie, selectNewDuel]);
-
-    const handleKeyDown = useCallback((event: KeyboardEvent) => {
-        switch (event.code) {
-            case 'KeyA':
-                handleRating('left');
-                break;
-            case 'KeyD':
-                handleRating('right');
-                break;
-            case 'Space':
-                handleRating('draw');
-                break;
-            default:
-                break;
-        }
-    }, [handleRating]);
-
-    useEffect(() => {
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [handleKeyDown]);
-    
-    const renderMovie = (movie: MovieData | null, side: 'left' | 'right') => {
-        if (!movie) return <div className="w-full h-full bg-gray-800 animate-pulse" />;
-
-        const isPlaying = (side === 'left' && isPlayingLeft) || (side === 'right' && isPlayingRight);
-
-        if (isPlaying) {
-            return (
-                <div className="w-full">
-                    <VideoPlayer
-                        src={`/api/video/stream?path=${btoa(encodeURIComponent(movie.absolutePath))}`}
-                        filepath={movie.absolutePath}
-                        filename={movie.filename}
-                        onEnded={() => {
-                            if (side === 'left') setIsPlayingLeft(false);
-                            else setIsPlayingRight(false);
-                        }}
-                        autoPlay={false} // 显式设置为 false
-                    />
-                </div>
-            );
-        }
-
-        return (
-            <div onClick={() => {
-                if (side === 'left') setIsPlayingLeft(true);
-                else setIsPlayingRight(true);
-            }} className="cursor-pointer">
-                <img
-                    src={movie.coverUrl || '/placeholder-image.svg'}
-                    alt={`${side} movie cover`}
-                    className="w-full h-auto object-cover"
-                />
-                <h2 className="text-white mt-2 truncate" title={movie.code}>{movie.code}</h2>
-                <p className="text-gray-400">Elo: {eloRatings.get(movie.code!)?.elo || 1000}</p>
-            </div>
-        );
+  useEffect(() => {
+    const fetchEloRatings = async () => {
+      try {
+        const response = await fetch("/api/elo-ratings");
+        if (!response.ok) throw new Error("无法读取 Elo 评分");
+        const ratingsArray: EloRating[] = await response.json();
+        setEloRatings(new Map(ratingsArray.map((r: EloRating) => [r.code, r])));
+      } catch (error) {
+        console.error("加载 Elo 评分失败:", error);
+        setEloRatings(new Map());
+      }
     };
+    fetchEloRatings();
+  }, []);
+
+  const selectNewDuel = useCallback(() => {
+    const validMovies = allMovies.filter((movie) => movie.code);
+
+    if (validMovies.length < 2) {
+      alert("可参与对战的影片不足两部");
+      onExit();
+      return;
+    }
+
+    let minMatchCount = Infinity;
+    for (const movie of validMovies) {
+      const count = eloRatings.get(movie.code!)?.matchCount || 0;
+      if (count < minMatchCount) {
+        minMatchCount = count;
+      }
+    }
+
+    let leastRatedPool = validMovies.filter(
+      (movie) => (eloRatings.get(movie.code!)?.matchCount || 0) === minMatchCount
+    );
+
+    if (leastRatedPool.length < 2) {
+      leastRatedPool = validMovies;
+      if (leastRatedPool.length < 2) {
+        alert("可参与对战的影片不足两部");
+        onExit();
+        return;
+      }
+    }
+
+    let index1 = Math.floor(Math.random() * leastRatedPool.length);
+    let index2 = Math.floor(Math.random() * (leastRatedPool.length - 1));
+    if (index2 >= index1) {
+      index2++;
+    }
+
+    setLeftMovie(leastRatedPool[index1]);
+    setRightMovie(leastRatedPool[index2]);
+    setIsPlayingLeft(false);
+    setIsPlayingRight(false);
+  }, [allMovies, eloRatings, onExit]);
+
+  useEffect(() => {
+    if (allMovies.length > 0 && !isInitialDuelSelected.current) {
+      selectNewDuel();
+      isInitialDuelSelected.current = true;
+    }
+  }, [allMovies, selectNewDuel]);
+
+  const handleRating = useCallback(
+    async (winner: "left" | "right" | "draw") => {
+      if (!leftMovie?.code || !rightMovie?.code) return;
+
+      const resultString: "winA" | "winB" | "draw" =
+        winner === "left" ? "winA" : winner === "right" ? "winB" : "draw";
+
+      try {
+        const response = await fetch("/api/elo-ratings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            codeA: leftMovie.code,
+            codeB: rightMovie.code,
+            result: resultString,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "更新评分失败");
+        }
+
+        const { updatedRatingA, updatedRatingB } = await response.json();
+
+        setEloRatings((prev) => {
+          const newRatings = new Map(prev);
+          newRatings.set(updatedRatingA.code, updatedRatingA);
+          newRatings.set(updatedRatingB.code, updatedRatingB);
+          return newRatings;
+        });
+
+        selectNewDuel();
+      } catch (error) {
+        console.error("更新 Elo 评分失败:", error);
+        alert(`更新评分失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [leftMovie, rightMovie, selectNewDuel]
+  );
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      switch (event.code) {
+        case "KeyA":
+          handleRating("left");
+          break;
+        case "KeyD":
+          handleRating("right");
+          break;
+        case "Space":
+          event.preventDefault();
+          handleRating("draw");
+          break;
+        default:
+          break;
+      }
+    },
+    [handleRating]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleKeyDown]);
+
+  const renderMovie = (movie: MovieData | null, side: "left" | "right") => {
+    if (!movie) {
+      return <div className="h-[520px] w-full animate-pulse border border-[#3e392d] bg-[#211e18]" />;
+    }
+
+    const isPlaying = side === "left" ? isPlayingLeft : isPlayingRight;
+    const rating = movie.code ? eloRatings.get(movie.code) : undefined;
+    const setPlaying = side === "left" ? setIsPlayingLeft : setIsPlayingRight;
+
+    if (isPlaying) {
+      return (
+        <div className="h-[62vh] min-h-[420px] border border-[#3e392d] bg-black">
+          <VideoPlayer
+            src={`/api/video/stream?path=${safeBase64Encode(movie.absolutePath)}`}
+            filepath={movie.absolutePath}
+            filename={movie.filename}
+            onEnded={() => setPlaying(false)}
+            autoPlay={false}
+          />
+        </div>
+      );
+    }
 
     return (
-        <div className="fixed inset-0 flex flex-col justify-center items-center h-screen bg-black/90 backdrop-blur-sm z-50">
-            <div className="absolute top-4 right-4">
-                <button onClick={onExit} className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">退出对战</button>
-            </div>
-            <div className="flex w-full max-w-5xl justify-around items-start">
-                <div className="w-1/2 p-4 text-center">
-                    {renderMovie(leftMovie, 'left')}
-                </div>
-                <div className="w-1/2 p-4 text-center">
-                    {renderMovie(rightMovie, 'right')}
-                </div>
-            </div>
-            <div className="text-white mt-4 text-lg">
-                <p>按 <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">A</kbd> 选择左边，<kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">D</kbd> 选择右边，<kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">空格</kbd> 表示平局。</p>
-            </div>
+      <button type="button" onClick={() => setPlaying(true)} className="block w-full text-left">
+        <div className="relative h-[62vh] min-h-[420px] overflow-hidden border border-[#3e392d] bg-[#0f0e0b]">
+          <img
+            src={movie.coverUrl || "/placeholder-image.svg"}
+            alt={movie.displayTitle || movie.title || movie.filename}
+            className="h-full w-full object-contain transition duration-500 hover:scale-[1.02]"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4">
+            <div className="text-xs font-bold text-[#e7bd67]">{side === "left" ? "A 选择左侧" : "D 选择右侧"}</div>
+            <div className="mt-1 truncate text-lg font-black text-white">{movie.code || movie.filename}</div>
+            <div className="mt-1 text-sm text-[#d9cbb4]">Elo {rating?.elo || movie.elo || 1000}</div>
+          </div>
         </div>
+      </button>
     );
+  };
+
+  return (
+    <main className="fixed inset-0 z-50 overflow-auto bg-[#15130f] text-[#f7f0df]">
+      <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:44px_44px]" />
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1680px] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-3 border border-[#3e392d] bg-[#211e18]/90 p-4 shadow-xl shadow-black/30 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">偏好评分</div>
+            <h1 className="mt-1 text-2xl font-black text-[#fff8e7]">影片对战</h1>
+            <p className="mt-1 text-sm text-[#b8af9d]">点击封面可预览，选择更喜欢的一侧会自动进入下一轮。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <KeyHint k="A" label="左侧胜" />
+            <KeyHint k="D" label="右侧胜" />
+            <KeyHint k="空格" label="平局" />
+            <button
+              type="button"
+              onClick={onExit}
+              className="border border-[#4a4334] px-4 py-2 text-sm font-black text-[#f7f0df] transition hover:bg-[#2a261d]"
+            >
+              退出对战
+            </button>
+          </div>
+        </header>
+
+        <section className="grid flex-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+          <div>{renderMovie(leftMovie, "left")}</div>
+          <div className="flex flex-col items-stretch gap-2 lg:w-32">
+            <button
+              type="button"
+              onClick={() => handleRating("left")}
+              className="border border-[#d79b43] bg-[#d79b43] px-4 py-3 text-sm font-black text-[#1e160b] transition hover:bg-[#efb85d]"
+            >
+              左侧胜
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRating("draw")}
+              className="border border-[#4a4334] bg-[#211e18] px-4 py-3 text-sm font-black text-[#f7f0df] transition hover:bg-[#2a261d]"
+            >
+              平局
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRating("right")}
+              className="border border-[#4fa58b] bg-[#214f45] px-4 py-3 text-sm font-black text-[#dffbf0] transition hover:bg-[#2c6759]"
+            >
+              右侧胜
+            </button>
+          </div>
+          <div>{renderMovie(rightMovie, "right")}</div>
+        </section>
+      </div>
+    </main>
+  );
 };
+
+function KeyHint({ k, label }: { k: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 border border-[#3e392d] bg-[#15130f] px-2.5 py-1.5 text-xs text-[#c8bdab]">
+      <kbd className="border border-[#5d5138] bg-[#2a261d] px-1.5 py-0.5 font-black text-[#e7bd67]">{k}</kbd>
+      {label}
+    </span>
+  );
+}
 
 export default MovieDuel;
