@@ -563,7 +563,7 @@ const MoviesLazyPage = () => {
         </section>
 
         <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-          <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+          <aside className="space-y-4">
             <FilterPanel
               title="演员"
               subtitle={`${actress.length} 位`}
