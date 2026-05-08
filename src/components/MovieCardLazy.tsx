@@ -53,12 +53,17 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
   onDetailsLoaded,
   onDelete,
 }) => {
+  const hasLoadedDetails = Boolean(
+    (movie as MovieDetails).coverUrl &&
+      ((movie as MovieDetails).coverUrl?.startsWith("/api/image-serve/") ||
+        (movie as MovieDetails).coverUrl?.startsWith("/image-cache/"))
+  );
   const [details, setDetails] = useState<MovieDetails | null>(
-    (movie as MovieDetails).coverUrl ? (movie as MovieDetails) : null
+    hasLoadedDetails ? (movie as MovieDetails) : null
   );
   const [isLoading, setIsLoading] = useState(!details);
   const [error, setError] = useState<string | null>(null);
-  const fetchInitiatedRef = useRef(!!details);
+  const fetchInitiatedRef = useRef(hasLoadedDetails);
 
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -251,7 +256,7 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
             {title}
           </h2>
           <p className="mt-1 truncate text-xs text-[#8f846f]" title={movie.filename}>
-            {movie.filename}
+            {movie.code ? `番号: ${movie.code}` : movie.filename}
           </p>
         </div>
 
