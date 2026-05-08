@@ -93,6 +93,77 @@ const MoviesLazyPage = () => {
 
   const [isDuelMode, setIsDuelMode] = useState<boolean>(false);
 
+  const sortedAndFilteredMovies = useMemo(() => {
+    let currentMovies = [...movies];
+
+    if (searchQuery) {
+      const lowerCaseQuery = searchQuery.toLowerCase();
+      currentMovies = currentMovies.filter(
+        (movie) =>
+          (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
+          (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
+      );
+    }
+
+    if (selectedActress) {
+      const lowerCaseActress = selectedActress.toLowerCase();
+      currentMovies = currentMovies.filter(
+        (movie) => movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
+      );
+    }
+
+    if (selectedGenre) {
+      currentMovies = currentMovies.filter((movie) => movie.kinds && movie.kinds.includes(selectedGenre));
+    }
+
+    const directionFactor = sortDirection === "desc" ? -1 : 1;
+    currentMovies.sort((a, b) => {
+      let valueA = 0;
+      let valueB = 0;
+
+      if (sortMode === "time") {
+        valueA = a.modifiedAt ?? 0;
+        valueB = b.modifiedAt ?? 0;
+      } else if (sortMode === "size") {
+        valueA = a.size ?? 0;
+        valueB = b.size ?? 0;
+      } else if (sortMode === "elo") {
+        valueA = a.elo ?? 1000;
+        valueB = b.elo ?? 1000;
+      }
+
+      return (valueA - valueB) * directionFactor;
+    });
+    return currentMovies;
+  }, [movies, sortMode, sortDirection, searchQuery, selectedActress, selectedGenre]);
+
+  const loaderRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < sortedAndFilteredMovies.length) {
+          setVisibleCount((count) => count + VISIBLE_BATCH_SIZE);
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [visibleCount, sortedAndFilteredMovies.length]);
+
   const fetchMovies = useCallback(async (forceRescan = false) => {
     setLoading(true);
     setError(null);
@@ -252,53 +323,6 @@ const MoviesLazyPage = () => {
       }
     };
   }, []);
-
-  const sortedAndFilteredMovies = useMemo(() => {
-    let currentMovies = [...movies];
-
-    if (searchQuery) {
-      const lowerCaseQuery = searchQuery.toLowerCase();
-      currentMovies = currentMovies.filter(
-        (movie) =>
-          (movie.title && movie.title.toLowerCase().includes(lowerCaseQuery)) ||
-          (movie.displayTitle && movie.displayTitle.toLowerCase().includes(lowerCaseQuery)) ||
-          (movie.code && movie.code.toLowerCase().includes(lowerCaseQuery)) ||
-          (movie.actress && movie.actress.toLowerCase().includes(lowerCaseQuery)) ||
-          (movie.filename && movie.filename.toLowerCase().includes(lowerCaseQuery))
-      );
-    }
-
-    if (selectedActress) {
-      const lowerCaseActress = selectedActress.toLowerCase();
-      currentMovies = currentMovies.filter(
-        (movie) => movie.actress && movie.actress.toLowerCase().includes(lowerCaseActress)
-      );
-    }
-
-    if (selectedGenre) {
-      currentMovies = currentMovies.filter((movie) => movie.kinds && movie.kinds.includes(selectedGenre));
-    }
-
-    const directionFactor = sortDirection === "desc" ? -1 : 1;
-    currentMovies.sort((a, b) => {
-      let valueA = 0;
-      let valueB = 0;
-
-      if (sortMode === "time") {
-        valueA = a.modifiedAt ?? 0;
-        valueB = b.modifiedAt ?? 0;
-      } else if (sortMode === "size") {
-        valueA = a.size ?? 0;
-        valueB = b.size ?? 0;
-      } else if (sortMode === "elo") {
-        valueA = a.elo ?? 1000;
-        valueB = b.elo ?? 1000;
-      }
-
-      return (valueA - valueB) * directionFactor;
-    });
-    return currentMovies;
-  }, [movies, sortMode, sortDirection, searchQuery, selectedActress, selectedGenre]);
 
   useEffect(() => {
     setVisibleCount(VISIBLE_BATCH_SIZE);
@@ -730,15 +754,9 @@ const MoviesLazyPage = () => {
               ))}
             </div>
 
-            {!loading && visibleCount < sortedAndFilteredMovies.length && (
-              <div className="mt-5 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((count) => count + VISIBLE_BATCH_SIZE)}
-                  className="border border-[#4a4334] bg-[#211e18] px-5 py-3 text-sm font-black text-[#f7f0df] transition hover:border-[#d79b43] hover:bg-[#2a261d]"
-                >
-                  加载更多（{Math.min(visibleCount, sortedAndFilteredMovies.length)} / {sortedAndFilteredMovies.length}）
-                </button>
+            {visibleCount < sortedAndFilteredMovies.length && (
+              <div ref={loaderRef} className="flex h-20 items-center justify-center">
+                <div className="text-sm text-[#a99f8d]">正在加载更多影片...</div>
               </div>
             )}
 
