@@ -71,6 +71,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onEnded,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  void filepath;
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<VideoError | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -160,27 +161,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
     onEnded?.(progress);
   }, [onEnded, onTimeUpdate]);
-
-  const openInExplorer = async () => {
-    try {
-      devWithTimestamp("打开文件位置:", filepath);
-      const response = await fetch("/api/open-file", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ filePath: filepath }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "打开文件位置失败");
-      }
-    } catch (error) {
-      devWithTimestamp("打开文件位置出错:", error);
-      alert(error instanceof Error ? error.message : "无法打开文件位置");
-    }
-  };
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -316,9 +296,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {filename && !isMobile && (
         <div className="absolute left-2 top-2 max-w-[80%] rounded bg-black/50 px-2 py-1 text-sm text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <button type="button" onClick={openInExplorer} className="truncate hover:underline">
-            {filename}
-          </button>
+          <span className="block truncate">{filename}</span>
         </div>
       )}
 
@@ -356,3 +334,4 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 };
 
 export default VideoPlayer;
+

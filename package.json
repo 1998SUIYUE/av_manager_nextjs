@@ -2,25 +2,17 @@
   "name": "av-manager",
   "version": "0.1.0",
   "private": true,
-  "homepage": "./",
-  "main": "main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "sb": "next build && next start",
-    "electron:dev": "cross-env NODE_ENV=development electron .",
-    "electron:pack": "electron-builder",
-    "build:electron": "npm run build && npm run electron:pack",
-    "dist": "npm run clean && npm run build && npm run electron:pack",
     "clean": "rimraf .next"
   },
   "dependencies": {
     "axios": "^1.7.8",
     "cheerio": "^1.1.0",
-    "cross-env": "^7.0.3",
-    "electron-is-dev": "^2.0.0",
     "next": "^15.0.3",
     "playwright": "^1.54.1",
     "react": "^18.2.0",
@@ -31,90 +23,10 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
     "eslint": "^8",
     "eslint-config-next": "15.0.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
-  },
-  "build": {
-    "appId": "com.yourcompany.avmanager",
-    "productName": "AV Manager",
-    "asar": false,
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      ".next/**/*",
-      "main.js",
-      "preload.js",
-      "package.json",
-      "public/**/*",
-      "node_modules/**/*",
-      "!userData/**/*",
-      "!src/**/*",
-      "!.git/**/*",
-      "!*.jpg",
-      "!*.jpeg",
-      "!*.png",
-      "!*.gif",
-      "!*.webp",
-      "!*.mp4",
-      "!*.mkv",
-      "!*.avi",
-      "!*.mov",
-      "!*.wmv",
-      "!*.webm",
-      "!.next/cache/**/*",
-      "!.next/trace",
-      "!node_modules/.cache/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": ".next/standalone",
-        "to": "standalone",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": ".next/static",
-        "to": "standalone/.next/static",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "public",
-        "to": "standalone/public",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "asarUnpack": [
-      ".next/standalone/node_modules/**/*"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "public/icon.ico"
-    },
-    "portable": {
-      "artifactName": "AV-Manager-Portable.exe"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
   }
 }

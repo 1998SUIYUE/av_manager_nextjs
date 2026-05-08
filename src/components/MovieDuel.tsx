@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MovieData } from "@/app/movies-lazy/page";
 import VideoPlayer from "./VideoPlayer";
@@ -145,6 +146,9 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
       }
     };
     fetchEloRatings();
+    // selectNewDuel is intentionally called with the freshly fetched ratingsMap.
+    // Adding it here would cause this initialization fetch to repeat when ratings state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allMovies.length]);
 
   useEffect(() => {

@@ -1,26 +1,25 @@
-import { useState } from 'react';
-import { redirect } from 'next/navigation';
-
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function FolderSelector() {
-  const [folderPath, setFolderPath] = useState<string>('');
+  const [folderPath, setFolderPath] = useState<string>("");
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 发送请求到 /api/movies
-    const response = await fetch('/api/movies', {
-      method: 'POST',
+
+    const response = await fetch("/api/movies", {
+      method: "POST",
       body: JSON.stringify({ folderPath }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     });
+
     if (response.ok) {
-      // 等待2秒
-      // await new Promise((resolve) => setTimeout(resolve, 2000));
-      redirect('/movies'); // 暂时注释掉重定向，以便查看响应数据
-    } else {
-      console.error('Error saving folder:', response.statusText);
+      router.push("/movies-lazy");
+      return;
     }
+
+    console.error("Error saving folder:", response.statusText);
   };
 
   return (
@@ -31,12 +30,12 @@ export default function FolderSelector() {
             type="text"
             value={folderPath}
             onChange={(e) => setFolderPath(e.target.value)}
-            placeholder="请输入文件夹路径 (例如: D:/Movies)"
-            className="p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+            placeholder="请输入电影目录路径 (例如: D:/Movies)"
+            className="border p-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
           />
           <button
             type="submit"
-            className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors"
+            className="rounded bg-blue-500 p-2 text-white transition-colors hover:bg-blue-600"
           >
             确认路径
           </button>

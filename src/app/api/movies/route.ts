@@ -1286,19 +1286,6 @@ async function getStoredDirectory(): Promise<string> {
   );
 
   // 检查环境变量和路径计算
-  devWithTimestamp(`[getStoredDirectory] 环境变量检查:`);
-  devWithTimestamp(
-    `[getStoredDirectory] - IS_ELECTRON: ${process.env.IS_ELECTRON}`
-  );
-  devWithTimestamp(
-    `[getStoredDirectory] - USER_DATA_PATH: ${process.env.USER_DATA_PATH}`
-  );
-  devWithTimestamp(
-    `[getStoredDirectory] - PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR}`
-  );
-  devWithTimestamp(
-    `[getStoredDirectory] - ELECTRON_RESOURCES_PATH: ${process.env.ELECTRON_RESOURCES_PATH}`
-  );
   devWithTimestamp(`[getStoredDirectory] - process.cwd(): ${process.cwd()}`);
   devWithTimestamp(
     `[getStoredDirectory] - process.execPath: ${process.execPath}`
@@ -1516,3 +1503,4 @@ export async function DELETE() {
     );
   }
 }
+
