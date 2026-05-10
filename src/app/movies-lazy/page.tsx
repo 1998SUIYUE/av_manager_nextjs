@@ -421,6 +421,34 @@ const MoviesLazyPage = () => {
     setSelectedGenre(null);
   };
 
+  const selectActressFilter = useCallback(
+    (name: string) => {
+      if (selectedActress === name) {
+        setSelectedActress(null);
+        setSearchQuery("");
+      } else {
+        setSelectedActress(name);
+        setSelectedGenre(null);
+        setSearchQuery(name || "");
+      }
+    },
+    [selectedActress]
+  );
+
+  const selectGenreFilter = useCallback(
+    (name: string) => {
+      if (selectedGenre === name) {
+        setSelectedGenre(null);
+        setSearchQuery("");
+      } else {
+        setSelectedGenre(name);
+        setSelectedActress(null);
+        setSearchQuery("");
+      }
+    },
+    [selectedGenre]
+  );
+
   if (isDuelMode) {
     return <MovieDuel allMovies={movies} onExit={() => setIsDuelMode(false)} />;
   }
@@ -662,16 +690,7 @@ const MoviesLazyPage = () => {
                 <ChipCloud
                   items={actress}
                   selected={selectedActress}
-                  onSelect={(name) => {
-                    if (selectedActress === name) {
-                      setSelectedActress(null);
-                      setSearchQuery("");
-                    } else {
-                      setSelectedActress(name);
-                      setSelectedGenre(null);
-                      setSearchQuery(name || "");
-                    }
-                  }}
+                  onSelect={selectActressFilter}
                 />
               </FilterPanel>
 
@@ -684,16 +703,7 @@ const MoviesLazyPage = () => {
                 <ChipCloud
                   items={genres}
                   selected={selectedGenre}
-                  onSelect={(name) => {
-                    if (selectedGenre === name) {
-                      setSelectedGenre(null);
-                      setSearchQuery("");
-                    } else {
-                      setSelectedGenre(name);
-                      setSelectedActress(null);
-                      setSearchQuery("");
-                    }
-                  }}
+                  onSelect={selectGenreFilter}
                 />
               </FilterPanel>
             </div>
@@ -719,6 +729,8 @@ const MoviesLazyPage = () => {
                   onLoaded={handleCardLoaded}
                   onDetailsLoaded={handleDetailsLoaded}
                   onDelete={handleDeleteMovieClick}
+                  onSelectActress={selectActressFilter}
+                  onSelectGenre={selectGenreFilter}
                 />
               ))}
             </div>

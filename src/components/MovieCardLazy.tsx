@@ -44,6 +44,8 @@ interface MovieCardLazyProps {
   onLoaded: () => void;
   onDetailsLoaded: (details: MovieDetails) => void;
   onDelete: (filePath: string) => Promise<void>;
+  onSelectActress?: (name: string) => void;
+  onSelectGenre?: (name: string) => void;
 }
 
 const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
@@ -52,6 +54,8 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
   onLoaded,
   onDetailsLoaded,
   onDelete,
+  onSelectActress,
+  onSelectGenre,
 }) => {
   const hasLoadedDetails = Boolean(
     (movie as MovieDetails).coverUrl &&
@@ -260,10 +264,9 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
           {movie.watched && <Tag label="已看过" tone="green" />}
           {!movie.watched && playbackProgress > 0.02 && <Tag label={`看到 ${(playbackProgress * 100).toFixed(0)}%`} tone="green" />}
           {playCount > 0 && <Tag label={`播放 ${playCount} 次`} tone="neutral" />}
-          {details?.actress && <Tag label={details.actress} tone="rose" />}
+          {details?.actress && <Tag label={details.actress} tone="rose" onClick={onSelectActress} />}
           {movie.year && <Tag label={movie.year} tone="green" />}
-          {details?.kinds?.slice(0, 2).map((kind) => <Tag key={kind} label={kind} tone="neutral" />)}
-          {details?.kinds && details.kinds.length > 2 && <Tag label={`+${details.kinds.length - 2}`} tone="neutral" />}
+          {details?.kinds?.map((kind) => <Tag key={kind} label={kind} tone="neutral" onClick={onSelectGenre} />)}
         </div>
 
         {error && (
@@ -310,13 +313,37 @@ const MovieCardLazy: React.FC<MovieCardLazyProps> = ({
   );
 };
 
-function Tag({ label, tone }: { label: string; tone: "rose" | "green" | "neutral" }) {
+function Tag({
+  label,
+  tone,
+  onClick,
+}: {
+  label: string;
+  tone: "rose" | "green" | "neutral";
+  onClick?: (label: string) => void;
+}) {
   const className =
     tone === "rose"
       ? "border-[#70444c] bg-[#321b22] text-[#ffc0cc]"
       : tone === "green"
       ? "border-[#2f6758] bg-[#132b25] text-[#aee7d3]"
       : "border-[#4a4334] bg-[#15130f] text-[#d9cbb4]";
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick(label);
+        }}
+        className={`border px-2 py-0.5 text-left text-[11px] font-bold transition hover:border-[#e7bd67] hover:text-[#fff8e7] ${className}`}
+        title={`筛选：${label}`}
+      >
+        {label}
+      </button>
+    );
+  }
 
   return <span className={`border px-2 py-0.5 text-[11px] font-bold ${className}`}>{label}</span>;
 }
