@@ -6,7 +6,7 @@ import {
   getCachedMovieMetadata,
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
-import { writeFile, readFile } from "fs/promises";
+import { mkdir, writeFile, readFile } from "fs/promises";
 import { devWithTimestamp, prodWithTimestamp } from "@/utils/logger";
 import { parseMovieFilename as parseMovieFilenameShared } from "@/lib/movieCodeParser";
 import { HttpsProxyAgent } from "https-proxy-agent"; // 导入代理模块
@@ -1318,11 +1318,14 @@ async function storeDirectory(directory: string): Promise<void> {
     `[storeDirectory] 尝试将目录 ${directory} 存储到 ${STORAGE_PATH}`
   );
   try {
+    // The userData directory may not exist on a fresh checkout.
+    await mkdir(path.dirname(STORAGE_PATH), { recursive: true });
     // 写入文件内容
     await writeFile(STORAGE_PATH, directory, "utf-8");
     devWithTimestamp(`[storeDirectory] 成功存储目录: ${directory}`);
   } catch (error) {
     devWithTimestamp(`[storeDirectory] 存储目录失败:`, error);
+    throw error;
   }
 }
 
@@ -1491,6 +1494,7 @@ export async function DELETE() {
   devWithTimestamp(`[DELETE] 接收到 DELETE 请求`);
   try {
     devWithTimestamp(`[DELETE] 尝试清空 movie-directory.txt 文件`);
+    await mkdir(path.dirname(STORAGE_PATH), { recursive: true });
     // 将 movie-directory.txt 文件内容清空
     await writeFile(STORAGE_PATH, "");
     devWithTimestamp(`[DELETE] movie-directory.txt 文件已清空`);
