@@ -19,3 +19,8 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.hide-native-video-controls::-webkit-media-controls-enclosure {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

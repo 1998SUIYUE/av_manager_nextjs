@@ -78,6 +78,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [forwardStep, setForwardStep] = useState(forwardSeconds);
   const forwardStepRef = useRef(forwardSeconds);
   const lastTimeUpdateSentRef = useRef(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     forwardStepRef.current = forwardStep;
@@ -125,7 +127,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     });
   }, [onProgress]);
 
+  const handlePause = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
   const handlePlay = useCallback(() => {
+    setIsPlaying(true);
     const videoElement = videoRef.current;
     if (!videoElement || !onPlayStart) return;
     onPlayStart({
@@ -192,6 +199,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     videoElement.addEventListener("canplay", handleCanPlay);
     videoElement.addEventListener("progress", handleProgress);
     videoElement.addEventListener("play", handlePlay);
+    videoElement.addEventListener("pause", handlePause);
     videoElement.addEventListener("timeupdate", handleTimeUpdate);
     videoElement.addEventListener("ended", handleEnded);
 
@@ -201,6 +209,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       videoElement.removeEventListener("canplay", handleCanPlay);
       videoElement.removeEventListener("progress", handleProgress);
       videoElement.removeEventListener("play", handlePlay);
+      videoElement.removeEventListener("pause", handlePause);
       videoElement.removeEventListener("timeupdate", handleTimeUpdate);
       videoElement.removeEventListener("ended", handleEnded);
     };
@@ -211,6 +220,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     loop,
     seekSeconds,
     handleError,
+    handlePause,
     handleLoadStart,
     handleCanPlay,
     handleProgress,
@@ -277,7 +287,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [isLoading]);
 
   return (
-    <div className="group relative h-full w-full">
+    <div
+      className="group relative h-full w-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <video
         ref={videoRef}
         src={src}
@@ -286,7 +300,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         autoPlay={autoPlay}
         muted={muted}
         preload="metadata"
-        className="h-full w-full bg-black object-contain outline-none"
+        className={`h-full w-full bg-black object-contain outline-none ${
+          controls && isPlaying && !isHovered && !isMobile ? "hide-native-video-controls" : ""
+        }`}
         style={{ maxWidth: "100%", maxHeight: "100%" }}
         playsInline
         tabIndex={-1}

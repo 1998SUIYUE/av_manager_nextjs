@@ -9,7 +9,9 @@
     "lint": "next lint",
     "sb": "next build && next start",
     "clean": "rimraf .next",
-    "prune:remote-covers": "node scripts/prune-remote-cover-urls.js"
+    "prune:remote-covers": "node scripts/prune-remote-cover-urls.js",
+    "prune:invalid-cover-metadata": "node scripts/prune-invalid-cover-metadata.js",
+    "prune:invalid-cover-metadata:apply": "node scripts/prune-invalid-cover-metadata.js --apply"
   },
   "dependencies": {
     "axios": "^1.7.8",

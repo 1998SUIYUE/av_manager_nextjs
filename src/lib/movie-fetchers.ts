@@ -163,8 +163,12 @@ async function fetchCoverUrlFromJavbus(code: string, baseUrl: string) {
                 devWithTimestamp(`[fetchCoverUrl] [Javbus] 调用 image-proxy 发生错误: ${proxyError}`);
             }
         }
-        if (coverUrl || title || actress) {
-            const finalCoverUrl = coverUrl && !coverUrl.includes("placeholder-image.svg") ? coverUrl : null;
+        const finalCoverUrl = typeof coverUrl === "string" && coverUrl.startsWith("/api/image-serve/") ? coverUrl : null;
+        if (!finalCoverUrl) {
+            prodWithTimestamp(`[fetchCoverUrl] [Javbus] 番号 ${code} 封面未成功缓存，不保存元数据`);
+            return { coverUrl: null, title: null, actress: null, kinds: [] };
+        }
+        if (finalCoverUrl) {
             prodWithTimestamp(`[fetchCoverUrl] [Javbus] 番号 ${code} 处理完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}`);
             await updateMovieMetadataCache(code, finalCoverUrl, title, actress, kinds);
             return { coverUrl: finalCoverUrl, title, actress, kinds };
@@ -269,7 +273,11 @@ export async function fetchCoverUrl(code: string, baseUrl: string) {
         devWithTimestamp(`[fetchCoverUrl] [DMM] 调用 image-proxy 发生错误: ${proxyError}`);
       }
     }
-    const finalCoverUrl = coverUrl && !coverUrl.includes("placeholder-image.svg") ? coverUrl : null;
+    const finalCoverUrl = typeof coverUrl === "string" && coverUrl.startsWith("/api/image-serve/") ? coverUrl : null;
+    if (!finalCoverUrl) {
+      prodWithTimestamp(`[fetchCoverUrl] [DMM] 番号 ${code} 封面未成功缓存，不保存元数据，尝试备用源 Javbus.`);
+      return await fetchCoverUrlFromJavbus(code, baseUrl);
+    }
     await updateMovieMetadataCache(code, finalCoverUrl, title || null, actress || null, kinds);
     prodWithTimestamp(`[fetchCoverUrl] [DMM] 番号 ${code} 完成 - 封面: ${finalCoverUrl}, 标题: ${title}, 女优: ${actress}, 标签数: ${kinds.length}`);
     return { coverUrl: finalCoverUrl, title, actress, kinds };
