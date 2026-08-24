@@ -570,7 +570,7 @@ const MoviesLazyPage = () => {
 
         <section className="sticky top-0 z-30 border border-[#3e392d] bg-[#191711]/94 p-3 shadow-xl shadow-black/30 backdrop-blur">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            <div className="relative flex-1">
+            <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[#8f846f]">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m21 21-4.3-4.3" />
@@ -686,6 +686,9 @@ const MoviesLazyPage = () => {
                 subtitle={`${actress.length} 位`}
                 expanded={showActressFilters}
                 onToggle={() => setShowActressFilters((prev) => !prev)}
+                items={actress}
+                selected={selectedActress}
+                onSelect={(name) => selectActressFilter(name)}
               >
                 <ChipCloud
                   items={actress}
@@ -699,6 +702,9 @@ const MoviesLazyPage = () => {
                 subtitle={`${genres.length} 类`}
                 expanded={showGenreFilters}
                 onToggle={() => setShowGenreFilters((prev) => !prev)}
+                items={genres}
+                selected={selectedGenre}
+                onSelect={(name) => selectGenreFilter(name)}
               >
                 <ChipCloud
                   items={genres}
@@ -868,14 +874,20 @@ function FilterPanel({
   subtitle,
   expanded,
   onToggle,
+  items,
+  selected,
+  onSelect,
   children,
 }: {
   title: string;
   subtitle: string;
   expanded: boolean;
   onToggle: () => void;
+  items: { name: string; count: number }[];
+  selected: string | null;
+  onSelect: (name: string) => void;
   children: React.ReactNode;
-}) {
+}) {
   return (
     <section className="border border-[#3e392d] bg-[#211e18]/86">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left">
@@ -885,10 +897,61 @@ function FilterPanel({
         </span>
         <span className="text-sm font-bold text-[#e7bd67]">{expanded ? "收起" : "展开"}</span>
       </button>
-      <div className={`border-t border-[#3e392d] p-3 ${expanded ? "max-h-[360px] overflow-auto" : "max-h-[92px] overflow-hidden"}`}>
-        {children}
+      <div className="border-t border-[#3e392d] p-3">
+        {expanded ? (
+          <div>{children}</div>
+        ) : (
+          <CollapsedChips items={items} selected={selected} onSelect={onSelect} onExpand={onToggle} />
+        )}
       </div>
     </section>
+  );
+}
+
+const COLLAPSED_CHIP_LIMIT = 6;
+
+function CollapsedChips({
+  items,
+  selected,
+  onSelect,
+  onExpand,
+}: {
+  items: { name: string; count: number }[];
+  selected: string | null;
+  onSelect: (name: string) => void;
+  onExpand: () => void;
+}) {
+  if (items.length === 0) {
+    return <div className="text-sm text-[#8f846f]">暂无可用筛选项</div>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.slice(0, COLLAPSED_CHIP_LIMIT).map((item) => (
+        <button
+          key={item.name}
+          type="button"
+          onClick={() => onSelect(item.name)}
+          title={`筛选：${item.name}`}
+          className={`border px-2.5 py-1.5 text-xs font-bold transition ${
+            selected === item.name
+              ? "border-[#d79b43] bg-[#d79b43] text-[#1b160f]"
+              : "border-[#4a4334] bg-[#15130f] text-[#c8bdab] hover:border-[#e7bd67] hover:text-[#fff8e7]"
+          }`}
+        >
+          {item.name}
+          <span className="ml-1 opacity-70">{item.count}</span>
+        </button>
+      ))}
+      {items.length > COLLAPSED_CHIP_LIMIT && (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="border border-[#5d5138] bg-[#15130f] px-2.5 py-1.5 text-xs font-black text-[#e7bd67] transition hover:border-[#d79b43]"
+        >
+          +{items.length - COLLAPSED_CHIP_LIMIT}
+        </button>
+      )}
+    </div>
   );
 }
 

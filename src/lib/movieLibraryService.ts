@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 import { devWithTimestamp } from "@/utils/logger";
 import { MovieFile, scanMovieDirectory } from "@/lib/movieScanner";
@@ -18,9 +18,18 @@ let scanCache:
 
 const inFlightScans = new Map<string, Promise<MovieFile[]>>();
 
-function cloneExistingMovies(movies: MovieFile[]): MovieFile[] {
-  return movies
-    .filter((movie) => fs.existsSync(movie.absolutePath))
+async function filterExistingMovies(movies: MovieFile[]): Promise<MovieFile[]> {
+  const results = await Promise.all(
+    movies.map(async (movie) => {
+      try {
+        await fs.access(movie.absolutePath);
+        return movie;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.filter((movie): movie is MovieFile => movie !== null)
     .map((movie) => ({ ...movie }));
 }
 
@@ -33,13 +42,13 @@ async function getScannedMovies(directoryPath: string, forceRescan: boolean): Pr
 
   if (!forceRescan && cacheIsFresh) {
     devWithTimestamp(`[movieLibraryService] Using scan cache: ${scanCache!.movies.length}`);
-    return cloneExistingMovies(scanCache!.movies);
+    return filterExistingMovies(scanCache!.movies);
   }
 
   const existingScan = inFlightScans.get(normalizedDirectory);
   if (!forceRescan && existingScan) {
     const movies = await existingScan;
-    return cloneExistingMovies(movies);
+    return filterExistingMovies(movies);
   }
 
   const scanPromise = scanMovieDirectory(directoryPath)
@@ -57,7 +66,7 @@ async function getScannedMovies(directoryPath: string, forceRescan: boolean): Pr
 
   inFlightScans.set(normalizedDirectory, scanPromise);
   const movies = await scanPromise;
-  return cloneExistingMovies(movies);
+  return filterExistingMovies(movies);
 }
 
 export async function getMovieLibrary(directoryPath: string, forceRescan: boolean) {

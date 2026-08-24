@@ -177,7 +177,8 @@ function createSchema(db: DatabaseSync) {
       win_count INTEGER NOT NULL DEFAULT 0,
       loss_count INTEGER NOT NULL DEFAULT 0,
       draw_count INTEGER NOT NULL DEFAULT 0,
-      last_rated INTEGER NOT NULL DEFAULT 0
+      last_rated INTEGER NOT NULL DEFAULT 0,
+      sigma REAL NOT NULL DEFAULT 300
     );
 
     CREATE TABLE IF NOT EXISTS playback_history (
@@ -194,10 +195,36 @@ function createSchema(db: DatabaseSync) {
       watched INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS match_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code_a TEXT NOT NULL,
+      code_b TEXT NOT NULL,
+      result TEXT NOT NULL,
+      elo_before_a REAL NOT NULL,
+      elo_after_a REAL NOT NULL,
+      elo_before_b REAL NOT NULL,
+      elo_after_b REAL NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_match_log_created ON match_log(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_movie_metadata_last_updated ON movie_metadata(last_updated DESC);
     CREATE INDEX IF NOT EXISTS idx_elo_ratings_elo ON elo_ratings(elo DESC);
     CREATE INDEX IF NOT EXISTS idx_playback_history_last_played ON playback_history(last_played_at DESC);
   `);
+}
+
+/**
+ * 老库升级：CREATE TABLE IF NOT EXISTS 不会给已存在的表补新列，这里按需 ALTER。
+ */
+function ensureColumns(db: DatabaseSync) {
+  const eloCols = new Set(
+    (db.prepare("PRAGMA table_info(elo_ratings)").all() as { name: string }[]).map((col) => col.name)
+  );
+  if (!eloCols.has("sigma")) {
+    db.exec("ALTER TABLE elo_ratings ADD COLUMN sigma REAL NOT NULL DEFAULT 300");
+    devWithTimestamp("[Database] Added sigma column to elo_ratings.");
+  }
 }
 
 export function getDatabase(): DatabaseSync {
@@ -208,6 +235,7 @@ export function getDatabase(): DatabaseSync {
 
   database = new DatabaseSync(databasePath);
   createSchema(database);
+  ensureColumns(database);
   migrateMovieMetadata(database);
   migrateEloRatings(database);
   migratePlaybackHistory(database);
@@ -223,3 +251,4 @@ export function parseJsonArray(value: unknown): string[] | undefined {
     return undefined;
   }
 }
+

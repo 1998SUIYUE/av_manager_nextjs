@@ -33,6 +33,7 @@ function getRating(movie: MovieData, ratings: Map<string, EloRating>): EloRating
       lossCount: movie.lossCount || 0,
       drawCount: movie.drawCount || 0,
       lastRated: 0,
+      sigma: 300,
     }
   );
 }
@@ -113,6 +114,9 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
       const sortedSecondPool = [...secondPool].sort((a, b) => {
         const ratingA = getRating(a, ratings);
         const ratingB = getRating(b, ratings);
+        // 优先高 sigma（不确定度大 → 对局信息量高），其次低场次，最后 Elo 接近
+        const sigmaDiff = (ratingB.sigma || 300) - (ratingA.sigma || 300);
+        if (sigmaDiff !== 0) return sigmaDiff;
         const countDiff = (ratingA.matchCount || 0) - (ratingB.matchCount || 0);
         if (countDiff !== 0) return countDiff;
         return Math.abs((ratingA.elo || 1000) - (firstRating.elo || 1000)) - Math.abs((ratingB.elo || 1000) - (firstRating.elo || 1000));
@@ -175,6 +179,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     [leftMovie?.code, rightMovie?.code, selectNewDuel]
   );
 
+
   const handleRating = useCallback(
     async (winner: "left" | "right" | "draw") => {
       if (!leftMovie?.code || !rightMovie?.code || isSubmitting) return;
@@ -219,7 +224,35 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     },
     [leftMovie, rightMovie, isSubmitting, eloRatings, rememberPairAndSelectNext, selectNewDuel]
   );
+  const handleUndo = useCallback(async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/elo-ratings", { method: "DELETE" });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "撤销失败");
+      }
 
+      const { reverted } = await response.json();
+      const ratingsResponse = await fetch("/api/elo-ratings");
+      if (!ratingsResponse.ok) throw new Error("刷新评分失败");
+      const ratingsArray: EloRating[] = await ratingsResponse.json();
+      const nextRatings = new Map(ratingsArray.map((rating) => [rating.code, rating]));
+      setEloRatings(nextRatings);
+
+      // 撤销的对局不再算"近期打过"，从去重记录里移除
+      recentPairsRef.current = recentPairsRef.current.filter(
+        (key) => key !== pairKey(reverted.codeA, reverted.codeB)
+      );
+      selectNewDuel(nextRatings, recentPairsRef.current);
+    } catch (error) {
+      console.error("撤销对局失败:", error);
+      alert(`撤销失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [isSubmitting, selectNewDuel]);
   const handleSkip = useCallback(() => {
     if (isSubmitting) return;
     rememberPairAndSelectNext(eloRatings);
@@ -244,11 +277,14 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         case "KeyS":
           handleSkip();
           break;
+        case "KeyZ":
+          void handleUndo();
+          break;
         default:
           break;
       }
     },
-    [handleRating, handleSkip, isPlayingLeft, isPlayingRight, isSubmitting]
+    [handleRating, handleSkip, handleUndo, isPlayingLeft, isPlayingRight, isSubmitting]
   );
 
   useEffect(() => {
@@ -319,7 +355,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
             <div className="text-xs font-bold text-[#e7bd67]">{side === "left" ? "A 选择左侧" : "D 选择右侧"}</div>
             <div className="mt-1 truncate text-lg font-black text-white">{movie.code || movie.filename}</div>
             <div className="mt-1 text-sm text-[#d9cbb4]">
-              Elo {rating.elo || 1000} · {rating.matchCount || 0} 场
+              Elo {rating.elo || 1000} · {rating.matchCount || 0} 场 · 胜{rating.winCount || 0}/负{rating.lossCount || 0}/平{rating.drawCount || 0}
             </div>
           </div>
         </div>
@@ -344,6 +380,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
             <KeyHint k="D" label="右侧胜" />
             <KeyHint k="空格" label="平局" />
             <KeyHint k="S" label="跳过" />
+            <KeyHint k="Z" label="悔棋" />
             <button
               type="button"
               onClick={onExit}
