@@ -2,8 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import { devWithTimestamp } from "@/utils/logger";
 import { MovieFile, scanMovieDirectory } from "@/lib/movieScanner";
-import { getMovieMetadataMap } from "@/lib/movieMetadataService";
-import { getMovieRatingMap } from "@/lib/movieRatingService";
+import { getAllCachedMovieMetadata } from "@/lib/movieMetadataCache";
+import { getAllEloRatings } from "@/lib/eloRatingCache";
 import { getAllPlaybackHistory } from "@/lib/playbackHistoryCache";
 
 const SCAN_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -72,8 +72,8 @@ async function getScannedMovies(directoryPath: string, forceRescan: boolean): Pr
 export async function getMovieLibrary(directoryPath: string, forceRescan: boolean) {
   const [moviesFromDisk, metadataCache, eloRatingsCache, playbackHistory] = await Promise.all([
     getScannedMovies(directoryPath, forceRescan),
-    getMovieMetadataMap(),
-    getMovieRatingMap(),
+    getAllCachedMovieMetadata(),
+    getAllEloRatings(),
     getAllPlaybackHistory(),
   ]);
 

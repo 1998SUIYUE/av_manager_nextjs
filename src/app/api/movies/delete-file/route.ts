@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { devWithTimestamp } from '@/utils/logger';
 import { deleteMovieMetadata, getCachedMovieMetadata } from '@/lib/movieMetadataCache';
-import { parseMovieFilename } from '@/lib/fileScanner';
+import { parseMovieFilename } from '@/lib/movieCodeParser';
 import { getImageCachePath } from '@/utils/paths';
 
 // TODO: 将这些凭据移动到环境变量等更安全的地方
