@@ -450,7 +450,7 @@ const MoviesLazyPage = () => {
   );
 
   if (isDuelMode) {
-    return <MovieDuel allMovies={movies} onExit={() => setIsDuelMode(false)} />;
+    return <MovieDuel allMovies={movies} onExit={() => setIsDuelMode(false)} onDelete={handleDeleteMovieClick} />;
   }
 
   return (
@@ -887,7 +887,7 @@ function FilterPanel({
   selected: string | null;
   onSelect: (name: string) => void;
   children: React.ReactNode;
-}) {
+}) {
   return (
     <section className="border border-[#3e392d] bg-[#211e18]/86">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left">

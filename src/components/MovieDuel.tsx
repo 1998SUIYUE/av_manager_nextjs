@@ -9,6 +9,7 @@ import { EloRating } from "@/lib/eloRatingCache";
 interface MovieDuelProps {
   allMovies: MovieData[];
   onExit: () => void;
+  onDelete: (filePath: string) => Promise<void>;
 }
 
 const RECENT_PAIR_LIMIT = 30;
@@ -66,15 +67,57 @@ function hasLocalCover(movie: MovieData | null): boolean {
   );
 }
 
-const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
+const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) => {
   const [leftMovie, setLeftMovie] = useState<MovieData | null>(null);
   const [rightMovie, setRightMovie] = useState<MovieData | null>(null);
   const [eloRatings, setEloRatings] = useState<Map<string, EloRating>>(new Map());
   const [isPlayingLeft, setIsPlayingLeft] = useState(false);
   const [isPlayingRight, setIsPlayingRight] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteConfirmSide, setDeleteConfirmSide] = useState<"left" | "right" | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const recentPairsRef = useRef<string[]>([]);
   const isInitialDuelSelected = useRef(false);
+  const deleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const selectOpponentFor = useCallback(
+    (firstMovie: MovieData, ratings: Map<string, EloRating>, recentPairs: string[]): MovieData | null => {
+      const validMovies = uniqueMoviesByCode(allMovies);
+      const firstRating = getRating(firstMovie, ratings);
+
+      let secondPool: MovieData[] = [];
+      for (const windowSize of ELO_WINDOWS) {
+        secondPool = validMovies.filter((movie) => {
+          if (!movie.code || movie.code === firstMovie.code) return false;
+          const rating = getRating(movie, ratings);
+          const sameRecentPair = recentPairs.includes(pairKey(firstMovie.code!, movie.code));
+          return Math.abs((rating.elo || 1000) - (firstRating.elo || 1000)) <= windowSize && !sameRecentPair;
+        });
+        if (secondPool.length > 0) break;
+      }
+
+      if (secondPool.length === 0) {
+        secondPool = validMovies.filter((movie) => movie.code && movie.code !== firstMovie.code);
+      }
+
+      if (secondPool.length === 0) return null;
+
+      const sortedSecondPool = [...secondPool].sort((a, b) => {
+        const ratingA = getRating(a, ratings);
+        const ratingB = getRating(b, ratings);
+        // 优先高 sigma（不确定度大 → 对局信息量高），其次低场次，最后 Elo 接近
+        const sigmaDiff = (ratingB.sigma || 300) - (ratingA.sigma || 300);
+        if (sigmaDiff !== 0) return sigmaDiff;
+        const countDiff = (ratingA.matchCount || 0) - (ratingB.matchCount || 0);
+        if (countDiff !== 0) return countDiff;
+        return Math.abs((ratingA.elo || 1000) - (firstRating.elo || 1000)) - Math.abs((ratingB.elo || 1000) - (firstRating.elo || 1000));
+      });
+
+      const shortlist = sortedSecondPool.slice(0, Math.min(8, sortedSecondPool.length));
+      return pickRandom(shortlist);
+    },
+    [allMovies]
+  );
 
   const selectNewDuel = useCallback(
     (ratings: Map<string, EloRating> = eloRatings, recentPairs: string[] = recentPairsRef.current) => {
@@ -94,36 +137,13 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
 
       const primaryPool = validMovies.filter((movie) => (getRating(movie, ratings).matchCount || 0) === minMatchCount);
       const firstMovie = pickRandom(primaryPool.length > 0 ? primaryPool : validMovies);
-      const firstRating = getRating(firstMovie, ratings);
 
-      let secondPool: MovieData[] = [];
-      for (const windowSize of ELO_WINDOWS) {
-        secondPool = validMovies.filter((movie) => {
-          if (!movie.code || movie.code === firstMovie.code) return false;
-          const rating = getRating(movie, ratings);
-          const sameRecentPair = recentPairs.includes(pairKey(firstMovie.code!, movie.code));
-          return Math.abs((rating.elo || 1000) - (firstRating.elo || 1000)) <= windowSize && !sameRecentPair;
-        });
-        if (secondPool.length > 0) break;
+      const secondMovie = selectOpponentFor(firstMovie, ratings, recentPairs);
+      if (!secondMovie) {
+        alert("可参与对战的影片不足两部");
+        onExit();
+        return;
       }
-
-      if (secondPool.length === 0) {
-        secondPool = validMovies.filter((movie) => movie.code && movie.code !== firstMovie.code);
-      }
-
-      const sortedSecondPool = [...secondPool].sort((a, b) => {
-        const ratingA = getRating(a, ratings);
-        const ratingB = getRating(b, ratings);
-        // 优先高 sigma（不确定度大 → 对局信息量高），其次低场次，最后 Elo 接近
-        const sigmaDiff = (ratingB.sigma || 300) - (ratingA.sigma || 300);
-        if (sigmaDiff !== 0) return sigmaDiff;
-        const countDiff = (ratingA.matchCount || 0) - (ratingB.matchCount || 0);
-        if (countDiff !== 0) return countDiff;
-        return Math.abs((ratingA.elo || 1000) - (firstRating.elo || 1000)) - Math.abs((ratingB.elo || 1000) - (firstRating.elo || 1000));
-      });
-
-      const shortlist = sortedSecondPool.slice(0, Math.min(8, sortedSecondPool.length));
-      const secondMovie = pickRandom(shortlist);
 
       if (Math.random() > 0.5) {
         setLeftMovie(firstMovie);
@@ -136,7 +156,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
       setIsPlayingLeft(false);
       setIsPlayingRight(false);
     },
-    [allMovies, eloRatings, onExit]
+    [allMovies, eloRatings, onExit, selectOpponentFor]
   );
 
   useEffect(() => {
@@ -182,7 +202,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
 
   const handleRating = useCallback(
     async (winner: "left" | "right" | "draw") => {
-      if (!leftMovie?.code || !rightMovie?.code || isSubmitting) return;
+      if (!leftMovie?.code || !rightMovie?.code || isSubmitting || isDeleting) return;
       if (leftMovie.code === rightMovie.code) {
         selectNewDuel();
         return;
@@ -222,10 +242,10 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         setIsSubmitting(false);
       }
     },
-    [leftMovie, rightMovie, isSubmitting, eloRatings, rememberPairAndSelectNext, selectNewDuel]
+    [leftMovie, rightMovie, isSubmitting, isDeleting, eloRatings, rememberPairAndSelectNext, selectNewDuel]
   );
   const handleUndo = useCallback(async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || isDeleting) return;
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/elo-ratings", { method: "DELETE" });
@@ -252,16 +272,108 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, selectNewDuel]);
+  }, [isSubmitting, isDeleting, selectNewDuel]);
   const handleSkip = useCallback(() => {
-    if (isSubmitting) return;
+    if (isSubmitting || isDeleting) return;
     rememberPairAndSelectNext(eloRatings);
-  }, [eloRatings, isSubmitting, rememberPairAndSelectNext]);
+  }, [eloRatings, isSubmitting, isDeleting, rememberPairAndSelectNext]);
+
+  // 保留另一侧擂主，仅替换 side 侧的影片（用于删除后的补位）
+  const replaceMovieOnSide = useCallback(
+    (side: "left" | "right") => {
+      const keptMovie = side === "left" ? rightMovie : leftMovie;
+      if (!keptMovie) {
+        selectNewDuel();
+        return;
+      }
+
+      const validMovies = uniqueMoviesByCode(allMovies);
+      if (validMovies.length < 2) {
+        selectNewDuel(); // 内部会提示影片不足并退出
+        return;
+      }
+
+      const opponent = selectOpponentFor(keptMovie, eloRatings, recentPairsRef.current);
+      if (!opponent) {
+        selectNewDuel();
+        return;
+      }
+
+      if (side === "left") {
+        setLeftMovie(opponent);
+        setIsPlayingLeft(false);
+      } else {
+        setRightMovie(opponent);
+        setIsPlayingRight(false);
+      }
+    },
+    [leftMovie, rightMovie, allMovies, eloRatings, selectNewDuel, selectOpponentFor]
+  );
+
+  // 影片从影库中被删除后（对战页内删除或外部删除），为被删一侧补位新对手
+  useEffect(() => {
+    if (!leftMovie && !rightMovie) return;
+    const paths = new Set(allMovies.map((m) => m.absolutePath));
+    const leftGone = Boolean(leftMovie && !paths.has(leftMovie.absolutePath));
+    const rightGone = Boolean(rightMovie && !paths.has(rightMovie.absolutePath));
+    if (!leftGone && !rightGone) return;
+
+    if (leftGone && rightGone) {
+      selectNewDuel();
+    } else if (leftGone) {
+      replaceMovieOnSide("left");
+    } else {
+      replaceMovieOnSide("right");
+    }
+  }, [allMovies, leftMovie, rightMovie, selectNewDuel, replaceMovieOnSide]);
+
+  const handleDeleteClick = useCallback(
+    async (side: "left" | "right", e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const movie = side === "left" ? leftMovie : rightMovie;
+      if (!movie || isDeleting || isSubmitting) return;
+
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+        deleteConfirmTimeoutRef.current = null;
+      }
+
+      if (deleteConfirmSide === side) {
+        // 第二次点击：确认删除，对局补位由 allMovies 变化的 effect 处理
+        setDeleteConfirmSide(null);
+        setIsDeleting(true);
+        try {
+          await onDelete(movie.absolutePath);
+        } catch (error) {
+          alert(`删除影片“${movie.filename}”失败：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          setIsDeleting(false);
+        }
+      } else {
+        // 第一次点击：进入确认态，4 秒未确认自动取消
+        setDeleteConfirmSide(side);
+        deleteConfirmTimeoutRef.current = setTimeout(() => {
+          setDeleteConfirmSide(null);
+          deleteConfirmTimeoutRef.current = null;
+        }, 4000);
+      }
+    },
+    [deleteConfirmSide, isDeleting, isSubmitting, leftMovie, rightMovie, onDelete]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimeoutRef.current) {
+        clearTimeout(deleteConfirmTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (isSubmitting || isPlayingLeft || isPlayingRight) return;
+      if (isSubmitting || isDeleting || isPlayingLeft || isPlayingRight) return;
 
       switch (event.code) {
         case "KeyA":
@@ -284,7 +396,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
           break;
       }
     },
-    [handleRating, handleSkip, handleUndo, isPlayingLeft, isPlayingRight, isSubmitting]
+    [handleRating, handleSkip, handleUndo, isPlayingLeft, isPlayingRight, isSubmitting, isDeleting]
   );
 
   useEffect(() => {
@@ -328,10 +440,46 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
     const isPlaying = side === "left" ? isPlayingLeft : isPlayingRight;
     const rating = getRating(movie, eloRatings);
     const setPlaying = side === "left" ? setIsPlayingLeft : setIsPlayingRight;
+    const isConfirmingDelete = deleteConfirmSide === side;
+
+    // 删除按钮与删除中覆盖层：封面态与播放态共用
+    const deleteButton = (
+      <button
+        type="button"
+        onClick={(e) => handleDeleteClick(side, e)}
+        className={`absolute right-2 top-2 z-30 grid h-9 w-9 place-items-center border text-white shadow-lg transition ${
+          isConfirmingDelete
+            ? "border-[#ff8c7c] bg-[#a73027]"
+            : "border-white/15 bg-black/55 backdrop-blur hover:bg-[#3a1d19]"
+        }`}
+        aria-label={isConfirmingDelete ? "确认删除影片" : "删除影片"}
+        title={isConfirmingDelete ? "再次点击确认删除" : "删除影片"}
+      >
+        {isConfirmingDelete ? (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M6 6l1 15h10l1-15" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+          </svg>
+        )}
+      </button>
+    );
+    const deletingOverlay = isDeleting ? (
+      <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#070604]/82 text-white">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+        <span className="mt-3 text-sm font-bold">删除中...</span>
+      </div>
+    ) : null;
 
     if (isPlaying) {
       return (
-        <div className="h-[62vh] min-h-[420px] border border-[#3e392d] bg-black">
+        <div className="relative h-[62vh] min-h-[420px] border border-[#3e392d] bg-black">
           <VideoPlayer
             src={`/api/video/stream?path=${safeBase64Encode(movie.absolutePath)}`}
             filepath={movie.absolutePath}
@@ -339,18 +487,35 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
             onEnded={() => setPlaying(false)}
             autoPlay={false}
           />
+          {deleteButton}
+          {deletingOverlay}
         </div>
       );
     }
 
+    const handleCardClick = () => {
+      if (deleteConfirmSide) {
+        // 点击卡片其他区域取消删除确认
+        setDeleteConfirmSide(null);
+        if (deleteConfirmTimeoutRef.current) {
+          clearTimeout(deleteConfirmTimeoutRef.current);
+          deleteConfirmTimeoutRef.current = null;
+        }
+      } else {
+        setPlaying(true);
+      }
+    };
+
     return (
-      <button type="button" onClick={() => setPlaying(true)} className="block w-full text-left">
+      <div onClick={handleCardClick} className="block w-full cursor-pointer text-left">
         <div className="relative h-[62vh] min-h-[420px] overflow-hidden border border-[#3e392d] bg-[#0f0e0b]">
           <img
             src={movie.coverUrl || "/placeholder-image.svg"}
             alt={movie.displayTitle || movie.title || movie.filename}
-            className="h-full w-full object-contain transition duration-500 hover:scale-[1.02]"
+            className={`h-full w-full object-contain transition duration-500 hover:scale-[1.02] ${isConfirmingDelete ? "opacity-45" : ""}`}
           />
+          {deleteButton}
+          {deletingOverlay}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4">
             <div className="text-xs font-bold text-[#e7bd67]">{side === "left" ? "A 选择左侧" : "D 选择右侧"}</div>
             <div className="mt-1 truncate text-lg font-black text-white">{movie.code || movie.filename}</div>
@@ -359,7 +524,7 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
             </div>
           </div>
         </div>
-      </button>
+      </div>
     );
   };
 
@@ -394,16 +559,16 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit }) => {
         <section className="grid flex-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
           <div>{renderMovie(leftMovie, "left")}</div>
           <div className="flex flex-col items-stretch gap-2 lg:w-32">
-            <DuelButton disabled={isSubmitting} onClick={() => handleRating("left")} tone="gold">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("left")} tone="gold">
               左侧胜
             </DuelButton>
-            <DuelButton disabled={isSubmitting} onClick={() => handleRating("draw")} tone="neutral">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("draw")} tone="neutral">
               平局
             </DuelButton>
-            <DuelButton disabled={isSubmitting} onClick={() => handleRating("right")} tone="green">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("right")} tone="green">
               右侧胜
             </DuelButton>
-            <DuelButton disabled={isSubmitting} onClick={handleSkip} tone="neutral">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={handleSkip} tone="neutral">
               跳过
             </DuelButton>
           </div>
