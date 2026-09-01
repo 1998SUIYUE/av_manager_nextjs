@@ -80,6 +80,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const lastTimeUpdateSentRef = useRef(0);
   const [isHovered, setIsHovered] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  // 父组件传入的回调多为内联函数、每次渲染引用都会变，事件监听只在挂载时绑定一次，
+  // 触发时从这里取最新回调
+  const callbacksRef = useRef({ onError, onLoadStart, onCanPlay, onProgress, onPlayStart, onTimeUpdate, onEnded });
+  const seekedSrcRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    callbacksRef.current = { onError, onLoadStart, onCanPlay, onProgress, onPlayStart, onTimeUpdate, onEnded };
+  });
 
   useEffect(() => {
     forwardStepRef.current = forwardStep;
@@ -97,24 +105,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       setError(errorDetails);
       setIsLoading(false);
-      onError?.(errorDetails);
+      callbacksRef.current.onError?.(errorDetails);
     },
-    [onError]
+    []
   );
 
   const handleLoadStart = useCallback(() => {
     setIsLoading(true);
     setError(null);
-    onLoadStart?.();
-  }, [onLoadStart]);
+    callbacksRef.current.onLoadStart?.();
+  }, []);
 
   const handleCanPlay = useCallback(() => {
     setIsLoading(false);
-    onCanPlay?.();
-  }, [onCanPlay]);
+    callbacksRef.current.onCanPlay?.();
+  }, []);
 
   const handleProgress = useCallback(() => {
     const videoElement = videoRef.current;
+    const { onProgress } = callbacksRef.current;
     if (!videoElement || !onProgress || videoElement.buffered.length === 0) return;
 
     const duration = videoElement.duration;
@@ -125,7 +134,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       buffered: (bufferedEnd / duration) * 100,
       duration,
     });
-  }, [onProgress]);
+  }, []);
 
   const handlePause = useCallback(() => {
     setIsPlaying(false);
@@ -134,15 +143,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handlePlay = useCallback(() => {
     setIsPlaying(true);
     const videoElement = videoRef.current;
+    const { onPlayStart } = callbacksRef.current;
     if (!videoElement || !onPlayStart) return;
     onPlayStart({
       currentTime: videoElement.currentTime || 0,
       duration: Number.isFinite(videoElement.duration) ? videoElement.duration : 0,
     });
-  }, [onPlayStart]);
+  }, []);
 
   const handleTimeUpdate = useCallback(() => {
     const videoElement = videoRef.current;
+    const { onTimeUpdate } = callbacksRef.current;
     if (!videoElement || !onTimeUpdate) return;
 
     const now = Date.now();
@@ -153,10 +164,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       currentTime: videoElement.currentTime || 0,
       duration: Number.isFinite(videoElement.duration) ? videoElement.duration : 0,
     });
-  }, [onTimeUpdate]);
+  }, []);
 
   const handleEnded = useCallback(() => {
     const videoElement = videoRef.current;
+    const { onTimeUpdate, onEnded } = callbacksRef.current;
     const progress = videoElement
       ? {
           currentTime: Number.isFinite(videoElement.duration) ? videoElement.duration : videoElement.currentTime || 0,
@@ -167,8 +179,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       onTimeUpdate(progress!);
     }
     onEnded?.(progress);
-  }, [onEnded, onTimeUpdate]);
+  }, []);
 
+  // 媒体属性只随 props 本身变化同步；若随父组件重渲染反复执行，
+  // 会把用户通过原生控件设置的静音/音量覆盖回 props 默认值
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -177,10 +191,21 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     videoElement.volume = volume;
     videoElement.playbackRate = playbackRate;
     videoElement.loop = loop;
+  }, [muted, volume, playbackRate, loop]);
 
-    if (seekSeconds) {
-      videoElement.currentTime = seekSeconds;
-    }
+  // 起播位置只在换片时应用一次；进度上报会持续更新 seekSeconds，
+  // 跟随变化会把播放位置拉回上次保存点
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !seekSeconds) return;
+    if (seekedSrcRef.current === src) return;
+    seekedSrcRef.current = src;
+    videoElement.currentTime = seekSeconds;
+  }, [src, seekSeconds]);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
 
     try {
       const extendedVideo = videoElement as unknown as ExtendedHTMLVideoElement;
@@ -214,11 +239,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       videoElement.removeEventListener("ended", handleEnded);
     };
   }, [
-    muted,
-    volume,
-    playbackRate,
-    loop,
-    seekSeconds,
     handleError,
     handlePause,
     handleLoadStart,
