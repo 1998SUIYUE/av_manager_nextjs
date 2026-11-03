@@ -628,7 +628,7 @@ const MoviesV2Page = () => {
         onOpenDuel={() => setIsDuelMode(true)}
         onOpenAppearance={() => setShowAppearance(true)}
         appearanceActive={showAppearance}
-        onChangeDirectory={() => router.push("/")}
+        onChangeDirectory={() => router.push("/?change=1")}
       />
 
       <div className="relative ml-14 flex h-screen flex-col">
