@@ -1,6 +1,0 @@
-{
-  "/api/appearance/route": "app/api/appearance/route.js",
-  "/api/elo-ratings/route": "app/api/elo-ratings/route.js",
-  "/api/movies-list/route": "app/api/movies-list/route.js",
-  "/movies-v2/page": "app/movies-v2/page.js"
-}
