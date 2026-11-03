@@ -4,7 +4,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MovieData } from "@/app/movies-lazy/page";
 import VideoPlayer from "./VideoPlayer";
+import PageBackground from "./PageBackground";
 import { EloRating } from "@/lib/eloRatingCache";
+import { MARGIN_CSS } from "@/lib/marginStyles";
+import { DEFAULT_APPEARANCE, fetchAppearance, type AppearanceSettings } from "@/lib/appearance";
 
 interface MovieDuelProps {
   allMovies: MovieData[];
@@ -14,6 +17,9 @@ interface MovieDuelProps {
 
 const RECENT_PAIR_LIMIT = 30;
 const ELO_WINDOWS = [150, 250, 400, Infinity];
+
+// 对战展示封面
+const SHOW_COVER = true;
 
 function safeBase64Encode(str: string): string {
   try {
@@ -76,6 +82,23 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirmSide, setDeleteConfirmSide] = useState<"left" | "right" | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // 两侧视频真实宽高比：播放容器高度跟随视频，消除上下黑边（上限 62vh）
+  const [videoAspects, setVideoAspects] = useState<{ left: number; right: number }>({ left: 16 / 9, right: 16 / 9 });
+
+  // 外观设置与 /movies-v2 同源（服务端持久化），对战页复用同一张背景
+  const [appearance, setAppearance] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
+  const bgActive = appearance.bgMode !== "off";
+  useEffect(() => {
+    let alive = true;
+    fetchAppearance()
+      .then((settings) => {
+        if (alive) setAppearance(settings);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const recentPairsRef = useRef<string[]>([]);
   const isInitialDuelSelected = useRef(false);
   const deleteConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -434,23 +457,24 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
 
   const renderMovie = (movie: MovieData | null, side: "left" | "right") => {
     if (!movie) {
-      return <div className="h-[520px] w-full animate-pulse border border-[#3e392d] bg-[#211e18]" />;
+      return <div className="h-[62vh] min-h-[420px] w-full animate-pulse rounded-2xl bg-surface" />;
     }
 
     const isPlaying = side === "left" ? isPlayingLeft : isPlayingRight;
     const rating = getRating(movie, eloRatings);
     const setPlaying = side === "left" ? setIsPlayingLeft : setIsPlayingRight;
     const isConfirmingDelete = deleteConfirmSide === side;
+    const keyHint = side === "left" ? "A" : "D";
 
     // 删除按钮与删除中覆盖层：封面态与播放态共用
     const deleteButton = (
       <button
         type="button"
         onClick={(e) => handleDeleteClick(side, e)}
-        className={`absolute right-2 top-2 z-30 grid h-9 w-9 place-items-center border text-white shadow-lg transition ${
+        className={`absolute right-3 top-3 z-30 grid h-9 w-9 place-items-center rounded-lg backdrop-blur transition ${
           isConfirmingDelete
-            ? "border-[#ff8c7c] bg-[#a73027]"
-            : "border-white/15 bg-black/55 backdrop-blur hover:bg-[#3a1d19]"
+            ? "bg-danger-strong text-white"
+            : "border border-white/15 bg-black/45 text-white/85 hover:border-danger/50 hover:text-danger"
         }`}
         aria-label={isConfirmingDelete ? "确认删除影片" : "删除影片"}
         title={isConfirmingDelete ? "再次点击确认删除" : "删除影片"}
@@ -471,20 +495,28 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
       </button>
     );
     const deletingOverlay = isDeleting ? (
-      <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#070604]/82 text-white">
+      <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/85 text-white">
         <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-        <span className="mt-3 text-sm font-bold">删除中...</span>
+        <span className="mt-3 text-sm">删除中...</span>
       </div>
     ) : null;
 
     if (isPlaying) {
       return (
-        <div className="relative h-[62vh] min-h-[420px] border border-[#3e392d] bg-black">
+        <div
+          className="hair relative w-full overflow-hidden rounded-2xl bg-black"
+          style={{ aspectRatio: videoAspects[side], maxHeight: "62vh" }}
+        >
           <VideoPlayer
             src={`/api/video/stream?path=${safeBase64Encode(movie.absolutePath)}`}
             filepath={movie.absolutePath}
             filename={movie.filename}
             onEnded={() => setPlaying(false)}
+            onLoadedMetadata={({ width, height }) =>
+              setVideoAspects((prev) =>
+                prev[side] === width / height ? prev : { ...prev, [side]: width / height }
+              )
+            }
             autoPlay={false}
           />
           {deleteButton}
@@ -508,19 +540,43 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
 
     return (
       <div onClick={handleCardClick} className="block w-full cursor-pointer text-left">
-        <div className="relative h-[62vh] min-h-[420px] overflow-hidden border border-[#3e392d] bg-[#0f0e0b]">
-          <img
-            src={movie.coverUrl || "/placeholder-image.svg"}
-            alt={movie.displayTitle || movie.title || movie.filename}
-            className={`h-full w-full object-contain transition duration-500 hover:scale-[1.02] ${isConfirmingDelete ? "opacity-45" : ""}`}
-          />
+        <div className={`hair relative h-[62vh] min-h-[420px] overflow-hidden rounded-2xl bg-deep ${isConfirmingDelete ? "opacity-60" : ""}`}>
+          {SHOW_COVER ? (
+            <img
+              src={movie.coverUrl || "/placeholder-image.svg"}
+              alt={movie.displayTitle || movie.title || movie.filename}
+              className="h-full w-full object-contain transition duration-500 hover:scale-[1.02]"
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center p-8 text-center">
+              <div className="line-clamp-4 max-w-lg text-sm leading-6 text-white/70">
+                {movie.displayTitle || movie.title || movie.filename}
+              </div>
+              <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.22em] text-white/30">
+                点击播放
+              </div>
+            </div>
+          )}
           {deleteButton}
           {deletingOverlay}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-            <div className="text-xs font-bold text-[#e7bd67]">{side === "left" ? "A 选择左侧" : "D 选择右侧"}</div>
-            <div className="mt-1 truncate text-lg font-black text-white">{movie.code || movie.filename}</div>
-            <div className="mt-1 text-sm text-[#d9cbb4]">
-              Elo {rating.elo || 1000} · {rating.matchCount || 0} 场 · 胜{rating.winCount || 0}/负{rating.lossCount || 0}/平{rating.drawCount || 0}
+
+          {/* 键位提示浮层 */}
+          <div className="pointer-events-none absolute left-3 top-3 z-20">
+            <kbd className="rounded-md border border-white/20 bg-black/55 px-2 py-1 font-mono text-xs text-white/85 backdrop-blur">
+              {keyHint}
+            </kbd>
+          </div>
+
+          {/* 底部信息浮层 */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-5 pt-10">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent">
+              {side === "left" ? "Side A · 左侧" : "Side B · 右侧"}
+            </div>
+            <div className="mt-1 truncate font-mono text-lg font-medium text-white" title={movie.code || movie.filename}>
+              {movie.code || movie.filename}
+            </div>
+            <div className="mt-1 font-mono text-xs text-white/60">
+              Elo {rating.elo || 1000} · {rating.matchCount || 0} 场 · 胜{rating.winCount || 0} / 负{rating.lossCount || 0} / 平{rating.drawCount || 0}
             </div>
           </div>
         </div>
@@ -529,49 +585,67 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
   };
 
   return (
-    <main className="fixed inset-0 z-50 overflow-auto bg-[#15130f] text-[#f7f0df]">
-      <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:44px_44px]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1680px] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-3 border border-[#3e392d] bg-[#211e18]/90 p-4 shadow-xl shadow-black/30 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">偏好评分</div>
-            <h1 className="mt-1 text-2xl font-black text-[#fff8e7]">影片对战</h1>
-            <p className="mt-1 text-sm text-[#b8af9d]">
-              优先补齐低场次影片，并尽量匹配 Elo 接近、近期没打过的对手。
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <KeyHint k="A" label="左侧胜" />
-            <KeyHint k="D" label="右侧胜" />
-            <KeyHint k="空格" label="平局" />
-            <KeyHint k="S" label="跳过" />
-            <KeyHint k="Z" label="悔棋" />
-            <button
-              type="button"
-              onClick={onExit}
-              className="border border-[#4a4334] px-4 py-2 text-sm font-black text-[#f7f0df] transition hover:bg-[#2a261d]"
-            >
-              退出对战
-            </button>
+    <main className={`fixed inset-0 z-50 overflow-auto font-sans text-ink antialiased ${bgActive ? "" : "bg-canvas"}`}>
+      <style>{MARGIN_CSS}</style>
+      <PageBackground
+        mode={appearance.bgMode}
+        intensity={appearance.bgIntensity}
+        imageUrl={appearance.bgImageUrl}
+      />
+      <div className="relative mx-auto flex min-h-full w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+        {/* ===== 头部 ===== */}
+        <header className="hair glass rounded-2xl p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-faint">
+                ELO Duel · 偏好评分
+              </div>
+              <h1 className="mt-2 font-serif text-4xl tracking-wide text-ink">影片对战</h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
+                优先补齐低场次影片，并尽量匹配 Elo 接近、近期没打过的对手。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <KeyHint k="A" label="左胜" />
+              <KeyHint k="D" label="右胜" />
+              <KeyHint k="空格" label="平局" />
+              <KeyHint k="S" label="跳过" />
+              <KeyHint k="Z" label="悔棋" />
+              <button
+                type="button"
+                onClick={onExit}
+                className="rounded-lg border border-line-strong bg-chip px-4 py-2 text-sm text-ink transition hover:border-accent/60 hover:text-accent active:translate-y-px"
+              >
+                退出对战
+              </button>
+            </div>
           </div>
         </header>
 
+        {/* ===== 对局区 ===== */}
         <section className="grid flex-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
           <div>{renderMovie(leftMovie, "left")}</div>
-          <div className="flex flex-col items-stretch gap-2 lg:w-32">
-            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("left")} tone="gold">
+
+          <div className="hair glass flex flex-col items-stretch gap-2 rounded-2xl p-3 lg:w-40">
+            <span className="text-center font-serif text-2xl italic tracking-wide text-faint">vs</span>
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("left")} kbd="A">
               左侧胜
             </DuelButton>
-            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("draw")} tone="neutral">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("draw")} kbd="空格">
               平局
             </DuelButton>
-            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("right")} tone="green">
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => handleRating("right")} kbd="D">
               右侧胜
             </DuelButton>
-            <DuelButton disabled={isSubmitting || isDeleting} onClick={handleSkip} tone="neutral">
+            <div className="my-1 h-px bg-[rgba(255,255,255,0.08)]" />
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={handleSkip} kbd="S">
               跳过
             </DuelButton>
+            <DuelButton disabled={isSubmitting || isDeleting} onClick={() => void handleUndo()} kbd="Z">
+              悔棋
+            </DuelButton>
           </div>
+
           <div>{renderMovie(rightMovie, "right")}</div>
         </section>
       </div>
@@ -583,36 +657,33 @@ function DuelButton({
   children,
   disabled,
   onClick,
-  tone,
+  kbd,
 }: {
   children: React.ReactNode;
   disabled: boolean;
   onClick: () => void;
-  tone: "gold" | "green" | "neutral";
+  kbd: string;
 }) {
-  const toneClass =
-    tone === "gold"
-      ? "border-[#d79b43] bg-[#d79b43] text-[#1e160b] hover:bg-[#efb85d]"
-      : tone === "green"
-      ? "border-[#4fa58b] bg-[#214f45] text-[#dffbf0] hover:bg-[#2c6759]"
-      : "border-[#4a4334] bg-[#211e18] text-[#f7f0df] hover:bg-[#2a261d]";
-
+  // 与头部"退出对战"按钮同风格：chip 底 + line-strong 边框，hover 变 accent
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`border px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 ${toneClass}`}
+      className="flex items-center justify-between gap-2 rounded-lg border border-line-strong bg-chip px-4 py-3 text-sm font-medium text-ink shadow-[inset_0_1px_0_rgba(255,255,255,.09)] backdrop-blur-md transition hover:border-accent/60 hover:text-accent active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
     >
-      {children}
+      <span>{children}</span>
+      <kbd className="rounded-md bg-white/[0.08] px-1.5 py-0.5 font-mono text-[10px] text-muted">
+        {kbd}
+      </kbd>
     </button>
   );
 }
 
 function KeyHint({ k, label }: { k: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 border border-[#3e392d] bg-[#15130f] px-2.5 py-1.5 text-xs text-[#c8bdab]">
-      <kbd className="border border-[#5d5138] bg-[#2a261d] px-1.5 py-0.5 font-black text-[#e7bd67]">{k}</kbd>
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted">
+      <kbd className="rounded border border-line bg-chip px-1.5 py-0.5 text-[10px] text-ink">{k}</kbd>
       {label}
     </span>
   );

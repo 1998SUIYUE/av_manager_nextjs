@@ -64,3 +64,6 @@ node_modules/
 # Task files
 tasks.json
 tasks/ 
+# local agent tool data
+/.workbuddy/
+/.zcode/

@@ -5,7 +5,7 @@ import {
   updateMovieMetadataCache,
 } from "@/lib/movieMetadataCache";
 import { devWithTimestamp, prodWithTimestamp } from "@/utils/logger";
-import { HttpsProxyAgent } from "https-proxy-agent";
+import { axiosProxyOptions } from "@/lib/proxyAgent";
 import axios from "axios";
 
 // ==================================
@@ -13,8 +13,7 @@ import axios from "axios";
 // It is reused by various API routes.
 // ==================================
 
-const PROXY_URL = "http://127.0.0.1:9890";
-const AGENT = new HttpsProxyAgent(PROXY_URL);
+// 代理改为自动探测：系统代理/环境变量/常见端口，详见 lib/proxyAgent.ts
 
 const DMM_SEARCH_TEMPLATE =
   "https://www.dmm.co.jp/mono/dvd/-/search/=/searchstr={code}/";
@@ -124,16 +123,18 @@ function getFirstDetailLink($: cheerio.CheerioAPI, base: string): string {
 }
 
 async function fetchCoverUrlFromJavbus(code: string, baseUrl: string) {
-    prodWithTimestamp(`[fetchCoverUrl] [Javbus] 开始处理番号: ${code}`);
+    const searchUrl = `https://www.javbus.com/search/${code}`;
+    prodWithTimestamp(`[fetchCoverUrl] [Javbus] 开始处理番号: ${code}, 搜索页: ${searchUrl}`);
     try {
-        const res = await axios.get(`https://www.javbus.com/search/${code}`, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", "accept-encoding": "gzip, deflate, br, zstd", "accept-language": "zh-CN,zh;q=0.9,en;q=0.8", "cache-control": "max-age=0", cookie: "existmag=mag", priority: "u=0, i", referer: "https://www.javbus.com/", "sec-ch-ua": '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "sec-fetch-user": "?1", "upgrade-insecure-requests": "1", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" }, timeout: 15000, httpsAgent: AGENT, httpAgent: AGENT });
+        const res = await axios.get(searchUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", "accept-encoding": "gzip, deflate, br, zstd", "accept-language": "zh-CN,zh;q=0.9,en;q=0.8", "cache-control": "max-age=0", cookie: "existmag=mag", priority: "u=0, i", referer: "https://www.javbus.com/", "sec-ch-ua": '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "sec-fetch-user": "?1", "upgrade-insecure-requests": "1", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" }, timeout: 15000, ...(await axiosProxyOptions()) });
         const $0 = cheerio.load(res.data);
         const nexturl = $0("#waterfall > div > a").attr('href') || "";
         if (!nexturl) {
-            prodWithTimestamp(`[fetchCoverUrl] [Javbus] 未找到详情链接: ${code}`);
+            prodWithTimestamp(`[fetchCoverUrl] [Javbus] 未找到详情链接: ${code}, 搜索页: ${searchUrl}`);
             return { coverUrl: null, title: null, actress: null, kinds: [] };
         }
-        const res1 = await axios.get(nexturl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", "accept-encoding": "gzip, deflate, br, zstd", "accept-language": "zh-CN,zh;q=0.9,en;q=0.8", "cache-control": "max-age=0", cookie: "existmag=mag", priority: "u=0, i", referer: "https://www.javbus.com/", "sec-ch-ua": '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "sec-fetch-user": "?1", "upgrade-insecure-requests": "1", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" }, timeout: 15000, httpsAgent: AGENT, httpAgent: AGENT });
+        prodWithTimestamp(`[fetchCoverUrl] [Javbus] 详情页: ${nexturl}`);
+        const res1 = await axios.get(nexturl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", "accept-encoding": "gzip, deflate, br, zstd", "accept-language": "zh-CN,zh;q=0.9,en;q=0.8", "cache-control": "max-age=0", cookie: "existmag=mag", priority: "u=0, i", referer: "https://www.javbus.com/", "sec-ch-ua": '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"', "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"', "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "same-origin", "sec-fetch-user": "?1", "upgrade-insecure-requests": "1", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" }, timeout: 15000, ...(await axiosProxyOptions()) });
         const $ = cheerio.load(res1.data);
         let coverUrl = "https://www.javbus.com" + $("body > div.container > div.row.movie > div.col-md-9.screencap > a > img").attr("src") || "";
         let title = $("body > div.container > h3").text() || "";
@@ -183,11 +184,11 @@ async function fetchCoverUrlFromJavbus(code: string, baseUrl: string) {
 }
 
 export async function fetchCoverUrl(code: string, baseUrl: string) {
-  prodWithTimestamp(`[fetchCoverUrl] [DMM] 开始处理番号: ${code}`);
+  const searchUrl = makeSearchUrl(code);
+  prodWithTimestamp(`[fetchCoverUrl] [DMM] 开始处理番号: ${code}, 搜索页: ${searchUrl}`);
   try {
-    const searchUrl = makeSearchUrl(code);
     const headers = { ...DEFAULT_HEADERS, Cookie: cookieHeaderFromObject(DEFAULT_COOKIES) };
-    const res = await axios.get(searchUrl, { headers, timeout: 15000, httpsAgent: AGENT, httpAgent: AGENT, maxRedirects: 5, validateStatus: (s) => s >= 200 && s < 400 });
+    const res = await axios.get(searchUrl, { headers, timeout: 15000, ...(await axiosProxyOptions()), maxRedirects: 5, validateStatus: (s) => s >= 200 && s < 400 });
     const html = res.data || "";
     if (isAdultGateHtml(html)) {
       devWithTimestamp(`[fetchCoverUrl] [DMM] 搜索页可能命中成年确认页，需要更好的 Cookie 或代理`);
@@ -197,7 +198,8 @@ export async function fetchCoverUrl(code: string, baseUrl: string) {
     if (!detailUrl) {
       throw new Error(`[DMM] 未找到详情链接: ${code}`);
     }
-    const resDetail = await axios.get(detailUrl, { headers, timeout: 15000, httpsAgent: AGENT, httpAgent: AGENT, maxRedirects: 5, validateStatus: (s) => s >= 200 && s < 400 });
+    prodWithTimestamp(`[fetchCoverUrl] [DMM] 详情页: ${detailUrl}`);
+    const resDetail = await axios.get(detailUrl, { headers, timeout: 15000, ...(await axiosProxyOptions()), maxRedirects: 5, validateStatus: (s) => s >= 200 && s < 400 });
     const dhtml = resDetail.data || "";
     if (isAdultGateHtml(dhtml)) {
       devWithTimestamp(`[fetchCoverUrl] [DMM] 详情页可能命中成年确认页`);

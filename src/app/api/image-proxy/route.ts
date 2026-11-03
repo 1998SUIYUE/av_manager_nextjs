@@ -4,14 +4,12 @@ import path from "path";
 import axios from "axios";
 import { devWithTimestamp } from "@/utils/logger";
 import { getImageCachePath } from "@/utils/paths";
-import { HttpsProxyAgent } from "https-proxy-agent"; // 导入代理模块
+import { axiosProxyOptions } from "@/lib/proxyAgent";
 
 // 图片缓存目录
 const CACHE_DIR = getImageCachePath();
 
-// 本地代理地址
-const PROXY_URL = 'http://127.0.0.1:9890'; 
-const AGENT = new HttpsProxyAgent(PROXY_URL);
+// 代理改为自动探测：系统代理/环境变量/常见端口，详见 lib/proxyAgent.ts
 
 // 支持的图片类型
 const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
@@ -109,8 +107,7 @@ export async function GET(request: NextRequest) {
             'upgrade-insecure-requests': '1',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
           },
-          httpsAgent: AGENT, // 添加代理配置
-          httpAgent: AGENT,  // 也为http请求添加代理
+          ...(await axiosProxyOptions()),
         });
 
         const imageBuffer = Buffer.from(response.data);

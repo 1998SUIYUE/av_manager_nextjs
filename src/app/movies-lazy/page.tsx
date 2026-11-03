@@ -61,6 +61,13 @@ const formatTotalSize = (sizeInGB: number) => {
   return `${sizeInGB.toFixed(1)} GB`;
 };
 
+const formatLastPlayed = (timestamp?: number) => {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const MoviesLazyPage = () => {
   const [movies, setMovies] = useState<MovieData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -82,6 +89,11 @@ const MoviesLazyPage = () => {
 
   const [duplicateMovies, setDuplicateMovies] = useState<Record<string, MovieData[]>>({});
   const [showDuplicates, setShowDuplicates] = useState<boolean>(false);
+
+  const [showActressCleanup, setShowActressCleanup] = useState<boolean>(false);
+  const [confirmingActressDelete, setConfirmingActressDelete] = useState<string | null>(null);
+  const [deletingActress, setDeletingActress] = useState<string | null>(null);
+  const actressConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [showVideoPlayer, setShowVideoPlayer] = useState<boolean>(false);
   const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
@@ -251,6 +263,19 @@ const MoviesLazyPage = () => {
     setDuplicateMovies(foundDuplicates);
   }, [movies]);
 
+  const actressCleanupGroups = useMemo(() => {
+    const groups = new Map<string, { name: string; count: number; sizeGB: number; movies: MovieData[] }>();
+    movies.forEach((movie) => {
+      if (!movie.actress) return;
+      const group = groups.get(movie.actress) || { name: movie.actress, count: 0, sizeGB: 0, movies: [] };
+      group.count += 1;
+      group.sizeGB += movie.sizeInGB || 0;
+      group.movies.push(movie);
+      groups.set(movie.actress, group);
+    });
+    return Array.from(groups.values()).sort((a, b) => b.sizeGB - a.sizeGB);
+  }, [movies]);
+
   const handleMovieClick = useCallback((absolutePath: string) => {
     playbackStartRecordedRef.current = false;
     setSelectedVideoPath(absolutePath);
@@ -316,10 +341,61 @@ const MoviesLazyPage = () => {
     }
   }, [selectedVideoPath, isConfirmingPlayerDelete, handleDeleteMovieClick, movies]);
 
+  const handleDeleteActressMovies = useCallback(
+    async (name: string) => {
+      const group = actressCleanupGroups.find((item) => item.name === name);
+      if (!group || group.movies.length === 0) return;
+
+      if (actressConfirmTimeoutRef.current) {
+        clearTimeout(actressConfirmTimeoutRef.current);
+      }
+
+      setDeletingActress(name);
+      setConfirmingActressDelete(null);
+      try {
+        const response = await fetch("/api/movies/delete-batch", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filePaths: group.movies.map((movie) => movie.absolutePath) }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "批量删除失败");
+        }
+
+        const data = await response.json();
+        const deletedPaths = new Set<string>(
+          data.results.filter((item: { status: string }) => item.status === "deleted").map((item: { filePath: string }) => item.filePath)
+        );
+
+        setMovies((prevMovies) => prevMovies.filter((movie) => !deletedPaths.has(movie.absolutePath)));
+        setTotalMovies((prevTotal) => Math.max(0, prevTotal - deletedPaths.size));
+
+        const failedResults = data.results.filter((item: { status: string }) => item.status !== "deleted");
+        if (failedResults.length > 0) {
+          const failedNames = failedResults
+            .map((item: { filePath: string }) => item.filePath.split(/[\\/]/).pop() || item.filePath)
+            .join("\n");
+          alert(`已删除 ${deletedPaths.size} 部影片，${failedResults.length} 部删除失败：\n${failedNames}`);
+        }
+      } catch (error) {
+        devWithTimestamp(`批量删除演员影片时发生错误：${name}`, error);
+        alert(`删除“${name}”的影片失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setDeletingActress(null);
+      }
+    },
+    [actressCleanupGroups]
+  );
+
   useEffect(() => {
     return () => {
       if (playerDeleteConfirmTimeoutRef.current) {
         clearTimeout(playerDeleteConfirmTimeoutRef.current);
+      }
+      if (actressConfirmTimeoutRef.current) {
+        clearTimeout(actressConfirmTimeoutRef.current);
       }
     };
   }, []);
@@ -349,8 +425,11 @@ const MoviesLazyPage = () => {
   const duplicateGroupCount = Object.keys(duplicateMovies).length;
   const totalSize = useMemo(() => movies.reduce((sum, movie) => sum + (movie.sizeInGB || 0), 0), [movies]);
   const ratedCount = useMemo(() => movies.filter((movie) => (movie.matchCount || 0) > 0).length, [movies]);
-  const topMovie = useMemo(
-    () => [...movies].sort((a, b) => (b.elo ?? 1000) - (a.elo ?? 1000))[0],
+  const lastPlayedMovie = useMemo(
+    () =>
+      [...movies]
+        .filter((movie) => movie.lastPlayedAt)
+        .sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0))[0],
     [movies]
   );
   const activeFilterCount = [searchQuery, selectedActress, selectedGenre].filter(Boolean).length;
@@ -476,7 +555,7 @@ const MoviesLazyPage = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 2xl:min-w-[520px]">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 2xl:min-w-[560px]">
                   <Metric label="影片" value={totalMovies.toString()} />
                   <Metric label="容量" value={formatTotalSize(totalSize)} />
                   <Metric label="已评分" value={ratedCount.toString()} />
@@ -487,6 +566,20 @@ const MoviesLazyPage = () => {
                     active={showDuplicates}
                     disabled={duplicateGroupCount === 0}
                     onClick={() => setShowDuplicates((prev) => !prev)}
+                  />
+                  <Metric
+                    label="演员清理"
+                    value={`${actressCleanupGroups.length} 位`}
+                    tone={actressCleanupGroups.length ? "warn" : "normal"}
+                    active={showActressCleanup}
+                    disabled={actressCleanupGroups.length === 0}
+                    onClick={() => {
+                      if (actressConfirmTimeoutRef.current) {
+                        clearTimeout(actressConfirmTimeoutRef.current);
+                      }
+                      setConfirmingActressDelete(null);
+                      setShowActressCleanup((prev) => !prev);
+                    }}
                   />
                 </div>
               </div>
@@ -533,18 +626,126 @@ const MoviesLazyPage = () => {
                   </div>
                 </section>
               )}
+
+              {showActressCleanup && actressCleanupGroups.length > 0 && (
+                <section className="mt-5 border border-[#6b4b2b] bg-[#241b12]/92">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#4a3926] px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-black text-[#f0bd73]">演员清理</div>
+                      <div className="text-xs text-[#b8af9d]">
+                        共 {actressCleanupGroups.length} 位演员 · 删除会连同影片文件、封面与档案一并移除，请谨慎确认
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (actressConfirmTimeoutRef.current) {
+                          clearTimeout(actressConfirmTimeoutRef.current);
+                        }
+                        setConfirmingActressDelete(null);
+                        setShowActressCleanup(false);
+                      }}
+                      className="border border-[#5d5138] px-3 py-1 text-xs font-bold text-[#e7bd67] hover:border-[#d79b43] hover:bg-[#2a261d]"
+                    >
+                      收起
+                    </button>
+                  </div>
+
+                  <div className="grid max-h-[420px] gap-3 overflow-auto p-3 md:grid-cols-2 2xl:grid-cols-3">
+                    {actressCleanupGroups.map((group) => {
+                      const isConfirming = confirmingActressDelete === group.name;
+                      const isDeleting = deletingActress === group.name;
+                      const batchBusy = deletingActress !== null;
+                      return (
+                        <div key={group.name} className="border border-[#3e392d] bg-[#15130f] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => selectActressFilter(group.name)}
+                              title={`点击筛选查看：${group.name}`}
+                              className="min-w-0 flex-1 truncate text-left text-sm font-black text-[#fff8e7] hover:text-[#e7bd67]"
+                            >
+                              {group.name}
+                            </button>
+                            <span className="shrink-0 text-xs text-[#d5a85d]">
+                              {group.count} 部 · {group.sizeGB.toFixed(1)} GB
+                            </span>
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              type="button"
+                              disabled={batchBusy}
+                              onClick={() => {
+                                if (batchBusy) return;
+                                if (actressConfirmTimeoutRef.current) {
+                                  clearTimeout(actressConfirmTimeoutRef.current);
+                                }
+                                if (isConfirming) {
+                                  handleDeleteActressMovies(group.name);
+                                  return;
+                                }
+                                setConfirmingActressDelete(group.name);
+                                actressConfirmTimeoutRef.current = setTimeout(() => {
+                                  setConfirmingActressDelete(null);
+                                }, 4000);
+                              }}
+                              className={`px-3 py-1.5 text-xs font-black transition ${
+                                isDeleting
+                                  ? "cursor-not-allowed border border-[#4a4334] bg-[#2a261d] text-[#8f846f]"
+                                  : isConfirming
+                                  ? "border border-[#d15f50] bg-[#9b2e25] text-white hover:bg-[#b93b30]"
+                                  : batchBusy
+                                  ? "cursor-not-allowed border border-[#72403a] bg-[#2b1714] text-[#ffb0a5] opacity-60"
+                                  : "border border-[#72403a] bg-[#2b1714] text-[#ffb0a5] hover:bg-[#3a1d19]"
+                              }`}
+                            >
+                              {isDeleting
+                                ? "删除中..."
+                                : isConfirming
+                                ? `确认删除 ${group.count} 部 / ${group.sizeGB.toFixed(1)} GB`
+                                : "删除全部"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </section>
 
             <section className="p-5 sm:p-6">
               <div className="flex h-full flex-col justify-between gap-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">今日入口</div>
-                  <div className="mt-3 text-lg font-bold text-[#fff8e7]">
-                    {topMovie?.code ? `当前最高评分：${topMovie.code}` : "等待加载评分数据"}
-                  </div>
-                  <div className="mt-1 text-sm text-[#b8af9d]">
-                    {topMovie?.elo ? `Elo ${topMovie.elo}` : "未评分影片会以 1000 分作为初始值"}
-                  </div>
+                  {lastPlayedMovie ? (
+                    <button
+                      type="button"
+                      onClick={() => handleMovieClick(lastPlayedMovie.absolutePath)}
+                      title={`点击播放：${lastPlayedMovie.filename}`}
+                      className="mt-3 block w-full border border-[#4a4334] bg-[#15130f] p-3 text-left transition hover:border-[#d79b43] hover:bg-[#2a261d]"
+                    >
+                      <div className="truncate text-lg font-bold text-[#fff8e7]">
+                        {lastPlayedMovie.code || lastPlayedMovie.filename}
+                      </div>
+                      <div className="mt-1 truncate text-sm text-[#b8af9d]">
+                        {lastPlayedMovie.watched
+                          ? "已看完"
+                          : `已看 ${Math.round((lastPlayedMovie.playbackProgress || 0) * 100)}%`}
+                        {" · "}
+                        上次 {formatLastPlayed(lastPlayedMovie.lastPlayedAt)}
+                      </div>
+                      <div className="mt-2 text-xs font-bold text-[#e7bd67]">
+                        {lastPlayedMovie.watched || (lastPlayedMovie.playbackProgress || 0) >= 0.95
+                          ? "点击重新播放"
+                          : "点击继续播放"}
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="mt-3 border border-[#4a4334] bg-[#15130f] p-3 text-sm text-[#8f846f]">
+                      暂无播放记录，去下面挑一部吧
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -770,7 +971,7 @@ const MoviesLazyPage = () => {
           onClick={handleCloseVideoPlayer}
         >
           <div
-            className="flex h-full w-full max-w-[1480px] flex-col border border-[#4a4334] bg-black shadow-2xl shadow-black"
+            className="flex h-full w-full max-w-[1480px] flex-col border border-[#4a4334] bg-black pb-8 shadow-2xl shadow-black"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[#2a261d] bg-[#15130f] px-4 py-3">

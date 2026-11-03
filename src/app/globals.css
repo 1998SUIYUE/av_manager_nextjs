@@ -24,3 +24,12 @@ body {
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+/* 隐藏滚动条但保留滚动能力（滚轮 / 触摸 / 键盘均不受影响） */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

@@ -12,7 +12,7 @@ export default function Home() {
         const response = await fetch("/api/movies", { method: "PUT" });
         // console.log("put response:", response);
         if (response.ok) {
-          router.push("/movies-lazy");
+          router.push("/movies-v2");
         }
       } catch (error) {
         console.error("Error checking movie directory:", error);

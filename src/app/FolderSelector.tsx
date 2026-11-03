@@ -15,7 +15,7 @@ export default function FolderSelector() {
     });
 
     if (response.ok) {
-      router.push("/movies-lazy");
+      router.push("/movies-v2");
       return;
     }
 

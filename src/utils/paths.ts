@@ -50,3 +50,7 @@ export function getImageCachePath(): string {
 export function getPlaybackHistoryCachePath(): string {
   return path.join(getUserDataPath(), "movie-playback-history.json");
 }
+
+export function getAppearancePath(): string {
+  return path.join(getUserDataPath(), "appearance.json");
+}
