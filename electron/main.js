@@ -164,6 +164,7 @@ function createWindow(url, iconPath) {
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      sandbox: false,
     },
     titleBarStyle: "hidden",
     titleBarOverlay: {

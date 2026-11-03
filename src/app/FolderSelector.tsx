@@ -68,6 +68,9 @@ export default function FolderSelector() {
             }}
             className="flex flex-col space-y-4"
           >
+            <p className="text-center text-xs text-gray-400">
+              浏览器模式不支持弹出文件夹选择器，请输入路径；桌面应用中可直接点击选择
+            </p>
             <input
               type="text"
               value={folderPath}
