@@ -15,6 +15,7 @@
     "pack:standalone": "node scripts/prepare-standalone.js",
     "electron:dev": "electron .",
     "dist": "next build && npm run pack:standalone && electron-builder --win",
+    "dist:fast": "next build && npm run pack:standalone && electron-builder --win --dir",
     "prune:remote-covers": "node scripts/prune-remote-cover-urls.js",
     "prune:invalid-cover-metadata": "node scripts/prune-invalid-cover-metadata.js",
     "prune:invalid-cover-metadata:apply": "node scripts/prune-invalid-cover-metadata.js --apply"
