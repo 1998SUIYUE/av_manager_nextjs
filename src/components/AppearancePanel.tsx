@@ -66,7 +66,7 @@ export default function AppearancePanel({ settings, onChange, onClose }: Appeara
         onClick={onClose}
         className="fixed inset-0 z-[55] cursor-default"
       />
-      <aside className="hair glass fixed right-4 top-4 z-[60] w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl p-5">
+      <aside className="hair glass fixed right-4 top-14 z-[60] w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl p-5">
         <h2 className="font-serif text-xl tracking-wide text-ink">外观</h2>
         <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-faint">
           Appearance · Margin Style

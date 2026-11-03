@@ -585,14 +585,16 @@ const MovieDuel: React.FC<MovieDuelProps> = ({ allMovies, onExit, onDelete }) =>
   };
 
   return (
-    <main className={`fixed inset-0 z-50 overflow-auto font-sans text-ink antialiased ${bgActive ? "" : "bg-canvas"}`}>
+    <main className={`app-no-drag fixed inset-0 z-50 overflow-auto font-sans text-ink antialiased no-scrollbar ${bgActive ? "" : "bg-canvas"}`}>
       <style>{MARGIN_CSS}</style>
+      {/* 窗口拖拽条（Electron 无边框模式下顶部拖动；浏览器里只是留白） */}
+      <div className="app-drag absolute inset-x-0 top-0 z-[55] h-12" />
       <PageBackground
         mode={appearance.bgMode}
         intensity={appearance.bgIntensity}
         imageUrl={appearance.bgImageUrl}
       />
-      <div className="relative mx-auto flex min-h-full w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-full w-full flex-col gap-5 px-4 pb-6 pt-[72px] sm:px-6 lg:px-8">
         {/* ===== 头部 ===== */}
         <header className="hair glass rounded-2xl p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

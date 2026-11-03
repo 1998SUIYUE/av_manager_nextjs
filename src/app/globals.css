@@ -33,3 +33,11 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Electron 自绘标题栏拖拽区（配合 titleBarStyle: hidden + titleBarOverlay） */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}

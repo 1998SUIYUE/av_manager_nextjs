@@ -5,7 +5,7 @@ const path = require("path");
 
 exports.default = async function afterPack(context) {
   const projectDir = process.cwd();
-  const src = path.join(projectDir, ".next", "standalone-packaged", "node_modules");
+  const src = path.join(projectDir, "standalone-packaged", "node_modules");
   const dest = path.join(context.appOutDir, "resources", "app", "node_modules");
 
   if (!fs.existsSync(src)) {

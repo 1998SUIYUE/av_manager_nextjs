@@ -7,6 +7,7 @@ import Link from "next/link";
 import MovieCardMargin from "@/components/MovieCardMargin";
 import PageBackground from "@/components/PageBackground";
 import AppearancePanel from "@/components/AppearancePanel";
+import AppSidebar from "@/components/AppSidebar";
 import { devWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer";
 import MovieDuel from "@/components/MovieDuel";
@@ -645,64 +646,66 @@ const MoviesV2Page = () => {
         imageUrl={appearance.bgImageUrl}
       />
 
-      <div className="relative flex w-full flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
-        {/* ===== 头部 ===== */}
-        <header className={`rounded-2xl shadow-[var(--sh-sm)] ${surfaceCls}`}>
-          <div className="flex flex-col gap-6 p-6 sm:p-7 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-4">
-                <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-faint">
-                  AV Library · 本地影片库
-                </div>
-                {USE_MOCK && (
-                  <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
-                    Mock
-                  </span>
-                )}
-                <Link
-                  href="/movies-lazy"
-                  className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint underline-offset-4 transition hover:text-accent hover:underline"
-                >
-                  旧版界面 →
-                </Link>
-              </div>
-              <h1 className="mt-2 font-serif text-4xl tracking-wide text-ink sm:text-5xl">影片库</h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
-                扫描本地文件，补全封面与元数据，快速筛选、播放、删除，并用对战评分整理你的片库偏好。
-              </p>
-            </div>
+      <AppSidebar
+        onOpenDuel={() => setIsDuelMode(true)}
+        onOpenAppearance={() => setShowAppearance(true)}
+        appearanceActive={showAppearance}
+      />
 
-            <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-              <Metric label="影片" value={totalMovies.toString()} deepCls={deepCls} />
-              <Metric label="容量" value={formatTotalSize(totalSize)} deepCls={deepCls} />
-              <Metric label="已评分" value={ratedCount.toString()} deepCls={deepCls} />
-              <Metric
-                label="重复组"
-                value={duplicateGroupCount.toString()}
-                deepCls={deepCls}
-                active={showDuplicates}
-                disabled={duplicateGroupCount === 0}
-                onClick={() => setShowDuplicates((prev) => !prev)}
-              />
-              <Metric
-                label="演员清理"
-                value={`${actressCleanupGroups.length} 位`}
-                deepCls={deepCls}
-                active={showActressCleanup}
-                disabled={actressCleanupGroups.length === 0}
-                onClick={() => {
-                  if (actressConfirmTimeoutRef.current) {
-                    clearTimeout(actressConfirmTimeoutRef.current);
-                  }
-                  setConfirmingActressDelete(null);
-                  setShowActressCleanup((prev) => !prev);
-                }}
-              />
-            </div>
+      <div className="relative ml-14 flex h-screen flex-col">
+        {/* ===== 顶栏：窗口拖拽区 + 高频操作 ===== */}
+        <div className="app-drag sticky top-0 z-40 flex h-12 shrink-0 items-center gap-3 border-b border-line bg-[#111112]/85 pr-[138px] backdrop-blur-md">
+          <span className="app-no-drag pl-4 text-sm font-medium text-ink">影片库</span>
+          <span className="app-no-drag truncate font-mono text-[11px] text-faint">
+            {totalMovies} 部 · {formatTotalSize(totalSize)} · 已评分 {ratedCount}
+          </span>
+          <div className="min-w-2 flex-1" />
+          <div className="app-no-drag flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDuplicates((prev) => !prev)}
+              disabled={duplicateGroupCount === 0}
+              aria-pressed={showDuplicates}
+              title={duplicateGroupCount === 0 ? "没有检测到重复影片" : "查看重复影片分组"}
+              className={`rounded-lg border px-3 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                showDuplicates
+                  ? "border-accent/60 bg-accent/10 text-accent"
+                  : "border-line-strong bg-chip text-muted hover:text-ink"
+              }`}
+            >
+              重复 {duplicateGroupCount}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (actressConfirmTimeoutRef.current) {
+                  clearTimeout(actressConfirmTimeoutRef.current);
+                }
+                setConfirmingActressDelete(null);
+                setShowActressCleanup((prev) => !prev);
+              }}
+              disabled={actressCleanupGroups.length === 0}
+              aria-pressed={showActressCleanup}
+              className={`rounded-lg border px-3 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                showActressCleanup
+                  ? "border-accent/60 bg-accent/10 text-accent"
+                  : "border-line-strong bg-chip text-muted hover:text-ink"
+              }`}
+            >
+              演员 {actressCleanupGroups.length}
+            </button>
+            <button
+              type="button"
+              onClick={handleRandomPlay}
+              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-black transition hover:opacity-90 active:translate-y-px"
+            >
+              随机播放
+            </button>
           </div>
-
-          {/* 今日入口 + 快捷操作（紧凑单行） */}
-          <div className="flex flex-col gap-2.5 border-t border-line px-5 py-3.5 sm:px-6 lg:flex-row lg:items-center lg:gap-3">
+        </div>
+        <div className="app-no-drag no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {/* ===== 今日入口 ===== */}
+          <div className="px-4 pt-4 sm:px-6">
             {lastPlayedMovie ? (
               <button
                 type="button"
@@ -730,42 +733,11 @@ const MoviesV2Page = () => {
                 <span className="ml-2.5 text-sm text-muted">暂无播放记录，去下面挑一部吧</span>
               </div>
             )}
-
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleRandomPlay}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black transition hover:opacity-90 active:translate-y-px"
-              >
-                随机播放
-              </button>
-              {!USE_MOCK && (
-                <button
-                  type="button"
-                  onClick={() => setIsDuelMode(true)}
-                  className="rounded-lg border border-line-strong bg-chip px-4 py-2 text-sm font-medium text-ink transition hover:border-accent/60 hover:text-accent active:translate-y-px"
-                >
-                  影片对战
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShowAppearance(true)}
-                aria-pressed={showAppearance}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition active:translate-y-px ${
-                  showAppearance
-                    ? "border border-accent/60 bg-accent/10 text-accent"
-                    : "border border-line-strong bg-chip text-ink hover:border-accent/60 hover:text-accent"
-                }`}
-              >
-                外观
-              </button>
-            </div>
           </div>
 
           {/* 重复影片面板 */}
           {showDuplicates && duplicateGroupCount > 0 && (
-            <section className="border-t border-line">
+            <section className={`mb-4 order-2 overflow-hidden rounded-2xl ${surfaceCls}`}>
               <div className="flex items-center justify-between px-5 py-3.5 sm:px-6">
                 <div>
                   <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent">Duplicates</div>
@@ -809,7 +781,7 @@ const MoviesV2Page = () => {
 
           {/* 演员清理面板 */}
           {showActressCleanup && actressCleanupGroups.length > 0 && (
-            <section className="border-t border-line">
+            <section className={`mb-4 order-2 overflow-hidden rounded-2xl ${surfaceCls}`}>
               <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 sm:px-6">
                 <div className="min-w-0">
                   <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent">Actress Cleanup</div>
@@ -893,10 +865,8 @@ const MoviesV2Page = () => {
               </div>
             </section>
           )}
-        </header>
-
         {/* ===== 工具条 ===== */}
-        <section className={`sticky top-0 z-30 rounded-2xl p-3 ${surfaceCls}`}>
+        <section className={`sticky top-0 z-30 order-1 mx-4 mt-4 rounded-2xl p-3 sm:mx-6 ${surfaceCls}`}>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-faint">
@@ -1014,7 +984,7 @@ const MoviesV2Page = () => {
         </section>
 
         {/* ===== 列表区 ===== */}
-        <div>
+        <div className="order-3 px-4 pb-6 pt-4 sm:px-6">
           <section className="min-w-0">
             {/* 加载/补全状态：仅进行中时出现，完成即消失 */}
             {(loading || isSortPending || detailProgress) && (
@@ -1076,6 +1046,7 @@ const MoviesV2Page = () => {
               </div>
             )}
           </section>
+        </div>
         </div>
       </div>
 

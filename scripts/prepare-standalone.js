@@ -8,7 +8,8 @@ const path = require("path");
 
 const root = process.cwd();
 const standalone = path.join(root, ".next", "standalone");
-const packaged = path.join(root, ".next", "standalone-packaged");
+// 打包目录放项目根（.next 内的产物会被 next build/dev 清理，且触发宿主批量删除守卫）
+const packaged = path.join(root, "standalone-packaged");
 
 if (!fs.existsSync(path.join(standalone, "server.js"))) {
   console.error("未找到 .next/standalone/server.js，请先执行 npm run build");

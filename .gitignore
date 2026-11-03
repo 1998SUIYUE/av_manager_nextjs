@@ -67,3 +67,9 @@ tasks/
 # local agent tool data
 /.workbuddy/
 /.zcode/
+
+# electron 打包产物中间层
+/standalone-packaged/
+
+# electron-builder 产物
+/dist/

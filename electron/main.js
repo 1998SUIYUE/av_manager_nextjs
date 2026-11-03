@@ -149,6 +149,12 @@ function createWindow(url, iconPath) {
     title: "AV Manager",
     icon: iconPath,
     show: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#111112",
+      symbolColor: "#b4b5b9",
+      height: 48,
+    },
   });
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
