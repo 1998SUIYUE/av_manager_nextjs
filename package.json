@@ -6,7 +6,9 @@
   "author": "1998SUIYUE",
   "main": "electron/main.js",
   "scripts": {
+    "predev": "rd /s /q .next-dev 2>nul & rd /s /q .next\\standalone 2>nul & exit /b 0",
     "dev": "next dev",
+    "prebuild": "rd /s /q .next 2>nul & exit /b 0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -14,8 +16,8 @@
     "clean": "rimraf .next",
     "pack:standalone": "node scripts/prepare-standalone.js",
     "electron:dev": "electron .",
-    "dist": "next build && npm run pack:standalone && electron-builder --win",
-    "dist:fast": "next build && npm run pack:standalone && electron-builder --win --dir",
+    "dist": "rd /s /q .next 2>nul & next build && npm run pack:standalone && electron-builder --win",
+    "dist:fast": "rd /s /q .next 2>nul & next build && npm run pack:standalone && electron-builder --win --dir",
     "prune:remote-covers": "node scripts/prune-remote-cover-urls.js",
     "prune:invalid-cover-metadata": "node scripts/prune-invalid-cover-metadata.js",
     "prune:invalid-cover-metadata:apply": "node scripts/prune-invalid-cover-metadata.js --apply"

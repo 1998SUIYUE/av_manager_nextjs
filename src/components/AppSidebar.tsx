@@ -21,12 +21,13 @@ function navBtnCls(active: boolean): string {
 export default function AppSidebar({ onOpenDuel, onOpenAppearance, appearanceActive }: AppSidebarProps) {
   return (
     <aside className="app-no-drag fixed inset-y-0 left-0 z-40 flex w-14 flex-col items-center gap-1.5 border-r border-line bg-[#0c0c0d] py-3">
-      <div
-        className="mb-1 flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-medium text-[#0c0c0d]"
+      <img
+        src="/icon.ico"
+        alt="AV Manager"
+        draggable={false}
+        className="mb-1 h-8 w-8 rounded-lg object-contain"
         title="AV Manager"
-      >
-        A
-      </div>
+      />
       <div className="mb-1 h-px w-7 bg-[rgba(255,255,255,0.08)]" />
 
       <button type="button" className={navBtnCls(true)} title="影片库（当前页面）" aria-current="page">

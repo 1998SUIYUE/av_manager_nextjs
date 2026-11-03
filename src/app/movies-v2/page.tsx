@@ -113,6 +113,9 @@ const MoviesV2Page = () => {
   const [showAppearance, setShowAppearance] = useState<boolean>(false);
   const [showFilterPopover, setShowFilterPopover] = useState<boolean>(false);
   const appearanceLoadedRef = useRef(false);
+  // 顶栏 chip 打开的面板在滚动容器深处，用 ref 平滑滚过去
+  const duplicateSectionRef = useRef<HTMLElement>(null);
+  const actressSectionRef = useRef<HTMLElement>(null);
   const bgActive = appearance.bgMode !== "off";
 
   useEffect(() => {
@@ -659,11 +662,37 @@ const MoviesV2Page = () => {
           <span className="app-no-drag truncate font-mono text-[11px] text-faint">
             {totalMovies} 部 · {formatTotalSize(totalSize)} · 已评分 {ratedCount}
           </span>
+          {lastPlayedMovie && (
+            <button
+              type="button"
+              onClick={() => handleMovieClick(lastPlayedMovie.absolutePath)}
+              title={`今日入口 · 点击播放：${lastPlayedMovie.filename}`}
+              className="app-no-drag hidden min-w-0 max-w-[300px] items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-left transition hover:border-accent/50 lg:flex"
+            >
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-faint">今日</span>
+              <span className="min-w-0 truncate text-xs font-medium text-ink">
+                {lastPlayedMovie.code || lastPlayedMovie.filename}
+              </span>
+              <span className="ml-auto hidden shrink-0 font-mono text-[10px] text-muted xl:inline">
+                {lastPlayedMovie.watched
+                  ? "已看完"
+                  : `已看 ${Math.round((lastPlayedMovie.playbackProgress || 0) * 100)}%`}
+              </span>
+            </button>
+          )}
           <div className="min-w-2 flex-1" />
           <div className="app-no-drag flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowDuplicates((prev) => !prev)}
+              onClick={() => {
+                const next = !showDuplicates;
+                setShowDuplicates(next);
+                if (next) {
+                  requestAnimationFrame(() =>
+                    duplicateSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  );
+                }
+              }}
               disabled={duplicateGroupCount === 0}
               aria-pressed={showDuplicates}
               title={duplicateGroupCount === 0 ? "没有检测到重复影片" : "查看重复影片分组"}
@@ -681,8 +710,14 @@ const MoviesV2Page = () => {
                 if (actressConfirmTimeoutRef.current) {
                   clearTimeout(actressConfirmTimeoutRef.current);
                 }
+                const next = !showActressCleanup;
                 setConfirmingActressDelete(null);
-                setShowActressCleanup((prev) => !prev);
+                setShowActressCleanup(next);
+                if (next) {
+                  requestAnimationFrame(() =>
+                    actressSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  );
+                }
               }}
               disabled={actressCleanupGroups.length === 0}
               aria-pressed={showActressCleanup}
@@ -704,40 +739,12 @@ const MoviesV2Page = () => {
           </div>
         </div>
         <div className="app-no-drag no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {/* ===== 今日入口 ===== */}
-          <div className="px-4 pt-4 sm:px-6">
-            {lastPlayedMovie ? (
-              <button
-                type="button"
-                onClick={() => handleMovieClick(lastPlayedMovie.absolutePath)}
-                title={`点击播放：${lastPlayedMovie.filename}`}
-                className={`min-w-0 flex-1 rounded-lg border border-line px-3.5 py-2 text-left transition hover:border-accent/50 ${deepCls}`}
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-faint">今日入口</span>
-                  <span className="min-w-0 truncate text-sm font-medium text-ink">
-                    {lastPlayedMovie.code || lastPlayedMovie.filename}
-                  </span>
-                  <span className="ml-auto hidden shrink-0 truncate font-mono text-[10px] text-muted sm:inline">
-                    {lastPlayedMovie.watched
-                      ? "已看完"
-                      : `已看 ${Math.round((lastPlayedMovie.playbackProgress || 0) * 100)}%`}
-                    {" · "}
-                    上次 {formatLastPlayed(lastPlayedMovie.lastPlayedAt)}
-                  </span>
-                </div>
-              </button>
-            ) : (
-              <div className={`min-w-0 flex-1 rounded-lg border border-line px-3.5 py-2 ${deepCls}`}>
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">今日入口</span>
-                <span className="ml-2.5 text-sm text-muted">暂无播放记录，去下面挑一部吧</span>
-              </div>
-            )}
-          </div>
-
           {/* 重复影片面板 */}
           {showDuplicates && duplicateGroupCount > 0 && (
-            <section className={`mb-4 order-2 overflow-hidden rounded-2xl ${surfaceCls}`}>
+            <section
+              ref={duplicateSectionRef}
+              className={`mb-4 mt-4 mx-4 order-2 shrink-0 scroll-mt-[72px] overflow-hidden rounded-2xl sm:mx-6 ${surfaceCls}`}
+            >
               <div className="flex items-center justify-between px-5 py-3.5 sm:px-6">
                 <div>
                   <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent">Duplicates</div>
@@ -752,7 +759,7 @@ const MoviesV2Page = () => {
                 </button>
               </div>
 
-              <div className="grid max-h-[360px] gap-3 overflow-auto px-5 pb-5 sm:px-6 md:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid max-h-[360px] gap-3 no-scrollbar overflow-auto px-5 pb-5 sm:px-6 md:grid-cols-2 2xl:grid-cols-3">
                 {Object.entries(duplicateMovies).map(([code, group]) => (
                   <div key={code} className={`rounded-xl border border-line p-3.5 ${deepCls}`}>
                     <div className="mb-2 flex items-center justify-between">
@@ -781,7 +788,10 @@ const MoviesV2Page = () => {
 
           {/* 演员清理面板 */}
           {showActressCleanup && actressCleanupGroups.length > 0 && (
-            <section className={`mb-4 order-2 overflow-hidden rounded-2xl ${surfaceCls}`}>
+            <section
+              ref={actressSectionRef}
+              className={`mb-4 mt-4 mx-4 order-2 shrink-0 scroll-mt-[72px] overflow-hidden rounded-2xl sm:mx-6 ${surfaceCls}`}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 sm:px-6">
                 <div className="min-w-0">
                   <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent">Actress Cleanup</div>
@@ -804,7 +814,7 @@ const MoviesV2Page = () => {
                 </button>
               </div>
 
-              <div className="grid max-h-[420px] gap-3 overflow-auto px-5 pb-5 sm:px-6 md:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid max-h-[420px] gap-3 no-scrollbar overflow-auto px-5 pb-5 sm:px-6 md:grid-cols-2 2xl:grid-cols-3">
                 {actressCleanupGroups.map((group) => {
                   const isConfirming = confirmingActressDelete === group.name;
                   const isDeleting = deletingActress === group.name;
@@ -866,7 +876,7 @@ const MoviesV2Page = () => {
             </section>
           )}
         {/* ===== 工具条 ===== */}
-        <section className={`sticky top-0 z-30 order-1 mx-4 mt-4 rounded-2xl p-3 sm:mx-6 ${surfaceCls}`}>
+        <section className={`sticky top-0 z-30 order-1 mx-4 mt-4 shrink-0 rounded-2xl p-3 sm:mx-6 ${surfaceCls}`}>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-faint">
@@ -984,7 +994,7 @@ const MoviesV2Page = () => {
         </section>
 
         {/* ===== 列表区 ===== */}
-        <div className="order-3 px-4 pb-6 pt-4 sm:px-6">
+        <div className="order-3 shrink-0 px-4 pb-6 pt-4 sm:px-6">
           <section className="min-w-0">
             {/* 加载/补全状态：仅进行中时出现，完成即消失 */}
             {(loading || isSortPending || detailProgress) && (
