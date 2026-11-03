@@ -717,7 +717,7 @@ const MoviesLazyPage = () => {
             <section className="p-5 sm:p-6">
               <div className="flex h-full flex-col justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">今日入口</div>
+                  <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#8f846f]">上次播放</div>
                   {lastPlayedMovie ? (
                     <button
                       type="button"

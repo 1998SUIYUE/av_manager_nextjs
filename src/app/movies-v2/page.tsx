@@ -666,10 +666,10 @@ const MoviesV2Page = () => {
             <button
               type="button"
               onClick={() => handleMovieClick(lastPlayedMovie.absolutePath)}
-              title={`今日入口 · 点击播放：${lastPlayedMovie.filename}`}
+              title={`上次播放 · 点击播放：${lastPlayedMovie.filename}`}
               className="app-no-drag hidden min-w-0 max-w-[300px] items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-left transition hover:border-accent/50 lg:flex"
             >
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-faint">今日</span>
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.18em] text-faint">上次播放</span>
               <span className="min-w-0 truncate text-xs font-medium text-ink">
                 {lastPlayedMovie.code || lastPlayedMovie.filename}
               </span>
