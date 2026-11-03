@@ -12,10 +12,12 @@ const fs = require("fs");
 
 const DEV_URL = "http://127.0.0.1:3000";
 const PORT_SCAN_START = 3000;
-const SERVER_READY_TIMEOUT_MS = 30 * 1000;
+// 首次启动可能被杀毒软件全量扫描拖慢，放宽到 120s
+const SERVER_READY_TIMEOUT_MS = 120 * 1000;
 
 let serverProcess = null;
 let mainWindow = null;
+let serverLogPath = null;
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -71,6 +73,14 @@ async function waitForServer(url, timeoutMs) {
   throw new Error(`服务启动超时：${url}`);
 }
 
+function logServer(message) {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
+  try {
+    if (serverLogPath) fs.appendFileSync(serverLogPath, line, "utf-8");
+  } catch {}
+  console.error(line);
+}
+
 function startServer(port) {
   // 打包后 standalone 位于 resources/app；开发态直接用仓库内 .next/standalone
   const serverBase = app.isPackaged
@@ -83,6 +93,8 @@ function startServer(port) {
 
   const dataRoot = app.getPath("userData"); // %APPDATA%/AV Manager
   fs.mkdirSync(dataRoot, { recursive: true });
+  serverLogPath = path.join(dataRoot, "server.log");
+  logServer(`启动服务：port=${port}, entry=${serverJs}, dataRoot=${dataRoot}`);
 
   serverProcess = spawn(process.execPath, [serverJs], {
     cwd: dataRoot,
@@ -97,14 +109,19 @@ function startServer(port) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  serverProcess.stdout.on("data", () => {});
-  serverProcess.stderr.on("data", (chunk) => {
-    console.error(`[server] ${chunk}`);
+  serverProcess.stdout.on("data", (chunk) => logServer(`[stdout] ${chunk}`));
+  serverProcess.stderr.on("data", (chunk) => logServer(`[stderr] ${chunk}`));
+  serverProcess.on("error", (error) => {
+    logServer(`spawn 失败：${error.message}`);
   });
   serverProcess.on("exit", (code) => {
+    logServer(`服务进程退出：code=${code}`);
     serverProcess = null;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showErrorBox("AV Manager", `后台服务已退出（code ${code}），请重新启动应用。`);
+      dialog.showErrorBox(
+        "AV Manager",
+        `后台服务已退出（code ${code}）。详情见日志：${path.join(dataRoot, "server.log")}`
+      );
       app.quit();
     }
   });
@@ -154,7 +171,8 @@ app.whenReady().then(async () => {
     createWindow(url);
   } catch (error) {
     stopServer();
-    dialog.showErrorBox("AV Manager", `启动失败：${error instanceof Error ? error.message : String(error)}`);
+    const logHint = serverLogPath ? `\n日志：${serverLogPath}` : "";
+    dialog.showErrorBox("AV Manager", `启动失败：${error instanceof Error ? error.message : String(error)}${logHint}`);
     app.quit();
   }
 });
