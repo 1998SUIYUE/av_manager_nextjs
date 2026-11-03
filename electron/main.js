@@ -81,11 +81,15 @@ function logServer(message) {
   console.error(line);
 }
 
-function startServer(port) {
+function getServerBase() {
   // 打包后 standalone 位于 resources/app；开发态直接用仓库内 .next/standalone
-  const serverBase = app.isPackaged
+  return app.isPackaged
     ? path.join(process.resourcesPath, "app")
     : path.join(__dirname, "..", ".next", "standalone");
+}
+
+function startServer(port) {
+  const serverBase = getServerBase();
   const serverJs = path.join(serverBase, "server.js");
   if (!fs.existsSync(serverJs)) {
     throw new Error(`未找到服务入口：${serverJs}，请先执行 npm run build && npm run pack:standalone`);
@@ -134,7 +138,7 @@ function stopServer() {
   }
 }
 
-function createWindow(url) {
+function createWindow(url, iconPath) {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -143,6 +147,7 @@ function createWindow(url) {
     backgroundColor: "#111112",
     autoHideMenuBar: true,
     title: "AV Manager",
+    icon: iconPath,
     show: false,
   });
   mainWindow.once("ready-to-show", () => mainWindow.show());
@@ -157,10 +162,13 @@ function createWindow(url) {
 }
 
 app.whenReady().then(async () => {
+  const iconPath = path.join(getServerBase(), "public", "icon.ico");
+
   try {
-    // 开发模式探测：3000 端口已有活着的 next dev 就直接连
-    if (await httpOk(DEV_URL, 1200)) {
-      createWindow(DEV_URL);
+    // 开发模式：仅未打包时，若 3000 端口已有活着的 next dev 就直接连。
+    // 打包模式一律走端口探测，防止 3000 被无关程序占用时误连。
+    if (!app.isPackaged && (await httpOk(DEV_URL, 1200))) {
+      createWindow(DEV_URL, iconPath);
       return;
     }
 
@@ -168,7 +176,7 @@ app.whenReady().then(async () => {
     const url = `http://127.0.0.1:${port}`;
     startServer(port);
     await waitForServer(url, SERVER_READY_TIMEOUT_MS);
-    createWindow(url);
+    createWindow(url, iconPath);
   } catch (error) {
     stopServer();
     const logHint = serverLogPath ? `\n日志：${serverLogPath}` : "";

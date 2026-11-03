@@ -1,6 +1,6 @@
 {
   "name": "av-manager",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "本地私人影片库管理器：扫描、元数据抓取、流式播放、Elo 对战评分",
   "author": "1998SUIYUE",
@@ -63,6 +63,7 @@
       }
     ],
     "win": {
+      "icon": "public/icon.ico",
       "target": [
         {
           "target": "nsis",
