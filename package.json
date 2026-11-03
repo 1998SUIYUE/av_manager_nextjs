@@ -1,7 +1,10 @@
 {
   "name": "av-manager",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "本地私人影片库管理器：扫描、元数据抓取、流式播放、Elo 对战评分",
+  "author": "1998SUIYUE",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,9 @@
     "lint": "next lint",
     "sb": "next build && next start",
     "clean": "rimraf .next",
+    "pack:standalone": "node scripts/prepare-standalone.js",
+    "electron:dev": "electron .",
+    "dist": "next build && npm run pack:standalone && electron-builder --win",
     "prune:remote-covers": "node scripts/prune-remote-cover-urls.js",
     "prune:invalid-cover-metadata": "node scripts/prune-invalid-cover-metadata.js",
     "prune:invalid-cover-metadata:apply": "node scripts/prune-invalid-cover-metadata.js --apply"
@@ -28,6 +34,8 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
     "eslint": "^8",
     "eslint-config-next": "15.0.3",
     "jest": "^30.4.2",
@@ -35,5 +43,40 @@
     "tailwindcss": "^3.4.1",
     "ts-jest": "^29.4.12",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.suiyue.avmanager",
+    "productName": "AV Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "app",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AV Manager"
+    }
   }
 }
