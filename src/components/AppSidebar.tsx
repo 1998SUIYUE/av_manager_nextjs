@@ -7,6 +7,7 @@ interface AppSidebarProps {
   onOpenDuel: () => void;
   onOpenAppearance: () => void;
   appearanceActive: boolean;
+  onChangeDirectory: () => void;
 }
 
 function navBtnCls(active: boolean): string {
@@ -17,7 +18,7 @@ function navBtnCls(active: boolean): string {
   }`;
 }
 
-export default function AppSidebar({ onOpenDuel, onOpenAppearance, appearanceActive }: AppSidebarProps) {
+export default function AppSidebar({ onOpenDuel, onOpenAppearance, appearanceActive, onChangeDirectory }: AppSidebarProps) {
   return (
     <aside className="app-no-drag fixed inset-y-0 left-0 z-40 flex w-14 flex-col items-center gap-1.5 border-r border-line bg-[#0c0c0d] py-3">
       <img
@@ -56,6 +57,18 @@ export default function AppSidebar({ onOpenDuel, onOpenAppearance, appearanceAct
       </button>
 
       <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={onChangeDirectory}
+        className="flex h-10 w-10 items-center justify-center rounded-[10px] text-muted transition hover:bg-white/[0.06] hover:text-ink"
+        title="更改影片目录"
+      >
+        <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <path d="M14 13h4M14 13l2-2M14 13l2 2" />
+        </svg>
+      </button>
     </aside>
   );
 }

@@ -524,6 +524,29 @@ const MoviesV2Page = () => {
     handleMovieClick(pool[randomIndex].absolutePath);
   }, [sortedAndFilteredMovies, movies, handleMovieClick, showToast]);
 
+  // 更改影片目录：Electron 走原生对话框，浏览器降级为输入框
+  const handleChangeMovieDirectory = useCallback(async () => {
+    let nextDir: string | null = null;
+    if (window.electronAPI?.selectFolder) {
+      nextDir = await window.electronAPI.selectFolder();
+    } else {
+      nextDir = window.prompt("输入新的影片目录路径：");
+    }
+    if (!nextDir) return;
+
+    const response = await fetch("/api/movies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderPath: nextDir }),
+    });
+    if (!response.ok) {
+      showToast("影片目录更新失败，请重试");
+      return;
+    }
+    showToast("影片目录已更新，正在重新扫描");
+    await fetchMovies(true);
+  }, [showToast, fetchMovies]);
+
   const recordPlaybackEvent = useCallback(
     async (
       event: "start" | "progress" | "ended",
@@ -625,6 +648,7 @@ const MoviesV2Page = () => {
         onOpenDuel={() => setIsDuelMode(true)}
         onOpenAppearance={() => setShowAppearance(true)}
         appearanceActive={showAppearance}
+        onChangeDirectory={() => void handleChangeMovieDirectory()}
       />
 
       <div className="relative ml-14 flex h-screen flex-col">

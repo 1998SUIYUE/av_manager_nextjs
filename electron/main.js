@@ -3,7 +3,7 @@
 // - 打包模式：自动挑空闲端口，spawn standalone server.js（ELECTRON_RUN_AS_NODE 使
 //   Electron 的 node 二进制以纯 Node 模式运行），等待就绪后开窗口
 // - 数据目录固定在 %APPDATA%/AV Manager/userData（安装到 Program Files 也可写）
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, shell, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const net = require("net");
 const http = require("http");
@@ -20,6 +20,19 @@ let mainWindow = null;
 let serverLogPath = null;
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+// 原生文件夹选择对话框（渲染进程通过 preload 的 electronAPI.selectFolder 调用）
+ipcMain.handle("dialog:select-folder", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "选择影片文件夹",
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, path: null };
+  }
+  return { canceled: false, path: result.filePaths[0] };
+});
+
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -149,6 +162,9 @@ function createWindow(url, iconPath) {
     title: "AV Manager",
     icon: iconPath,
     show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+    },
     titleBarStyle: "hidden",
     titleBarOverlay: {
       color: "#111112",
