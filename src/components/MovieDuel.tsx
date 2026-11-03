@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { MovieData } from "@/app/movies-lazy/page";
+import { MovieData } from "@/lib/movie-types";
 import VideoPlayer from "./VideoPlayer";
 import PageBackground from "./PageBackground";
 import { EloRating } from "@/lib/eloRatingCache";

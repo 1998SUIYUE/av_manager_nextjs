@@ -11,6 +11,7 @@ import AppSidebar from "@/components/AppSidebar";
 import { devWithTimestamp } from "@/utils/logger";
 import VideoPlayer from "@/components/VideoPlayer";
 import MovieDuel from "@/components/MovieDuel";
+import type { MovieData } from "@/lib/movie-types";
 import { buildMockMovies } from "@/lib/mockMovies";
 import { MARGIN_CSS } from "@/lib/marginStyles";
 import {
@@ -44,35 +45,6 @@ function safeBase64Encode(str: string): string {
   }
 }
 
-export interface MovieData {
-  filename: string;
-  path: string;
-  absolutePath: string;
-  size: number;
-  sizeInGB: number;
-  extension: string;
-  title: string;
-  year?: string;
-  code?: string;
-  modifiedAt: number;
-  coverUrl?: string | null;
-  displayTitle?: string;
-  actress?: string | null;
-  kinds?: string[];
-  elo?: number;
-  matchCount?: number;
-  winCount?: number;
-  drawCount?: number;
-  lossCount?: number;
-  winRate?: number;
-  lastPlayedAt?: number;
-  playCount?: number;
-  completedCount?: number;
-  lastPlaybackTime?: number;
-  playbackDuration?: number;
-  playbackProgress?: number;
-  watched?: boolean;
-}
 
 type SortMode = "time" | "size" | "elo";
 type SortDirection = "desc" | "asc";

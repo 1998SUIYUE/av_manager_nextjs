@@ -1,8 +1,7 @@
 "use client";
 
-// 左侧应用侧栏（方案 C）：影片库 / 对战 / 外观 导航 + 旧版入口
+// 左侧应用侧栏（方案 C）：影片库 / 对战 / 外观 导航
 import React from "react";
-import Link from "next/link";
 
 interface AppSidebarProps {
   onOpenDuel: () => void;
@@ -57,14 +56,6 @@ export default function AppSidebar({ onOpenDuel, onOpenAppearance, appearanceAct
       </button>
 
       <div className="flex-1" />
-
-      <Link
-        href="/movies-lazy"
-        className="flex h-10 w-10 items-center justify-center rounded-[10px] text-[10px] text-faint transition hover:bg-white/[0.06] hover:text-accent"
-        title="旧版界面"
-      >
-        旧
-      </Link>
     </aside>
   );
 }
